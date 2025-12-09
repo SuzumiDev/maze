@@ -120,8 +120,14 @@ public class ObjectInstantiation {
                 continue;
             }
 
+            if (methodType.isCtor())
+                arguments[i] = generateRandom(params[i].getType());
+
             // Get a default value for the parameter type
-            arguments[i] = getDefault(params[i].getType());
+            else
+                arguments[i] = getDefault(params[i].getType());
+
+            logger.debug("Initializing parameter {} with value {}", params[i].getName(), arguments[i]);
 
             // Add new argument to argMap
             if (argMap != null) {
