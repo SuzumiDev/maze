@@ -131,14 +131,14 @@ public class JUnitTestGenerator {
 
             Constructor<?> _ctor = ctor != null ? analyzer.getJavaConstructor(ctor, clazz) : null;
             ctorArgs = _ctor != null
-                    ? ObjectInstantiation.generateArgs(_ctor.getParameters(), MethodType.CTOR, argMap)
+                    ? ObjectInstantiation.generateArgs(_ctor.getParameters(), MethodType.CTOR, argMap, false)
                     : null;
             if (forCtor) {
                 result = ObjectInstantiation.createInstance(_ctor, ctorArgs);
                 args = new Object[0];
             } else {
                 Method _method = analyzer.getJavaMethod(method.getSignature(), clazz);
-                args = ObjectInstantiation.generateArgs(_method.getParameters(), MethodType.METHOD, argMap);
+                args = ObjectInstantiation.generateArgs(_method.getParameters(), MethodType.METHOD, argMap, false);
                 result = executor.execute(_ctor, _method, ctorArgs, args);
             }
         } catch (Exception e) {
@@ -490,7 +490,7 @@ public class JUnitTestGenerator {
         }
         // Make sure we use the constructor of the class we are generating the test for
         clazz = ctor.getDeclaringClass();
-        Object[] arguments = ObjectInstantiation.generateArgs(ctor.getParameters(), MethodType.CTOR, null);
+        Object[] arguments = ObjectInstantiation.generateArgs(ctor.getParameters(), MethodType.CTOR, null, false);
         String[] argNames = new String[arguments.length];
         for (int i = 0; i < arguments.length; i++) {
             Object arg = arguments[i];

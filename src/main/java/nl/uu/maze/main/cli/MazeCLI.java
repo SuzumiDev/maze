@@ -81,6 +81,9 @@ public class MazeCLI implements Callable<Integer> {
             "--concrete-driven" }, description = "Use concrete-driven DSE instead of symbolic-driven DSE (default: ${DEFAULT-VALUE})", defaultValue = "false", paramLabel = "<true|false>")
     private boolean concreteDriven;
 
+    @Option(names = { "-R", "--run-with-random" }, description = "Use concrete-driven with random starting values (default: ${DEFAULT-VALUE})", defaultValue = "false", paramLabel = "<true|false>")
+    private boolean runWithRandom;
+
     @Override
     public Integer call() {
         try {
@@ -99,7 +102,7 @@ public class MazeCLI implements Callable<Integer> {
 
             Long start = System.currentTimeMillis();
             DSEController controller = new DSEController(classPath, concreteDriven, strategy, outPath,
-                    methodName, maxDepth, testTimeout, packageName, junitVersion.isJUnit4());
+                    methodName, maxDepth, testTimeout, packageName, junitVersion.isJUnit4(), runWithRandom);
             controller.run(className, timeBudget);
             Long end = System.currentTimeMillis();
             logger.info("Execution time: {} ms", end - start);

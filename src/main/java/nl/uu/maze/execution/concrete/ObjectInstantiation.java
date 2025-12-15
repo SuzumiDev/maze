@@ -52,7 +52,7 @@ public class ObjectInstantiation {
         // Sort the constructors by the number of parameters to try the easiest first
         Arrays.sort(ctors, (a, b) -> Integer.compare(a.getParameterCount(), b.getParameterCount()));
         for (Constructor<?> ctor : ctors) {
-            Object[] args = generateArgs(ctor.getParameters(), MethodType.CTOR, null);
+            Object[] args = generateArgs(ctor.getParameters(), MethodType.CTOR, null, false);
             ExecutionResult result = createInstance(ctor, args);
             if (!result.isException()) {
                 return result;
@@ -73,7 +73,7 @@ public class ObjectInstantiation {
      *         created or the exception thrown if the instance could not be created
      */
     public static ExecutionResult createInstance(Constructor<?> ctor, ArgMap argMap) {
-        return createInstance(ctor, generateArgs(ctor.getParameters(), MethodType.CTOR, argMap));
+        return createInstance(ctor, generateArgs(ctor.getParameters(), MethodType.CTOR, argMap, false));
     }
 
     /**
@@ -110,7 +110,7 @@ public class ObjectInstantiation {
      *                   method invocation
      * @return An array of arguments corresponding to the given parameters
      */
-    public static Object[] generateArgs(Parameter[] params, MethodType methodType, ArgMap argMap) {
+    public static Object[] generateArgs(Parameter[] params, MethodType methodType, ArgMap argMap, boolean random) {
         Object[] arguments = new Object[params.length];
         for (int i = 0; i < params.length; i++) {
             // If the parameter is known, use the known value
@@ -119,15 +119,12 @@ public class ObjectInstantiation {
                 arguments[i] = argMap.toJava(name, params[i].getType());
                 continue;
             }
-
-            if (methodType.isCtor())
+            if (random)
                 arguments[i] = generateRandom(params[i].getType());
 
             // Get a default value for the parameter type
             else
                 arguments[i] = getDefault(params[i].getType());
-
-            logger.debug("Initializing parameter {} with value {}", params[i].getName(), arguments[i]);
 
             // Add new argument to argMap
             if (argMap != null) {

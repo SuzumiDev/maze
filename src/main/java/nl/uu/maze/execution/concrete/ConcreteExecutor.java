@@ -77,7 +77,7 @@ public class ConcreteExecutor {
      */
     public ExecutionResult execute(Object instance, Method method, ArgMap argMap) {
         try {
-            Object[] args = ObjectInstantiation.generateArgs(method.getParameters(), MethodType.METHOD, argMap);
+            Object[] args = ObjectInstantiation.generateArgs(method.getParameters(), MethodType.METHOD, argMap, false);
             return execute(instance, method, args);
         } catch (Exception e) {
             logger.warn("Failed to generate args for method {}: {}", method.getName(), e.getMessage());

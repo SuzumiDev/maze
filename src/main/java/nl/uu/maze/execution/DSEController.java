@@ -17,6 +17,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+import nl.uu.maze.execution.concrete.ObjectInstantiation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,6 +48,7 @@ public class DSEController {
     /** Max path length for symbolic execution */
     private final int maxDepth;
     private final boolean concreteDriven;
+    private final boolean runWithRandom;
     private final Path outPath;
     private final String methodName;
     private final SearchStrategy<?> searchStrategy;
@@ -94,7 +96,7 @@ public class DSEController {
      * @param packageName    The package name for the generated test files
      */
     public DSEController(String classPath, boolean concreteDriven, SearchStrategy<?> searchStrategy,
-            String outPath, String methodName, int maxDepth, long testTimeout, String packageName, boolean targetJUnit4)
+            String outPath, String methodName, int maxDepth, long testTimeout, String packageName, boolean targetJUnit4, boolean runWithRandom)
             throws Exception {
         instrumenter = new BytecodeInstrumenter(classPath);
         ClassLoader classLoader;
@@ -112,6 +114,7 @@ public class DSEController {
         this.methodName = methodName;
         this.maxDepth = maxDepth;
         this.concreteDriven = concreteDriven;
+        this.runWithRandom = runWithRandom;
         this.searchStrategy = searchStrategy;
         this.replayStrategy = new SymbolicSearchStrategy(new DFS<SymbolicState>());
 
@@ -250,7 +253,10 @@ public class DSEController {
                 try {
                     strategy.reset();
                     logger.info("Processing method: {}", method.getName());
-                    runConcreteDriven(method, strategy);
+                    if (runWithRandom)
+                        runConcreteDrivenMultipleStartingStates(method, strategy);
+                    else
+                        runConcreteDriven(method, strategy);
                 } catch (Exception e) {
                     logger.error("Error processing method {}: {}", method.getName(), e.getMessage());
                     logger.debug("Error stack trace: ", e);
@@ -495,5 +501,70 @@ public class DSEController {
             Pair<Model, SymbolicState> pair = candidate.get();
             argMap = validator.evaluate(pair.getFirst(), pair.getSecond().returnToRootCaller(), false);
         }
+    }
+
+    private void runConcreteDrivenMultipleStartingStates(JavaSootMethod method, ConcreteSearchStrategy searchStrategy) throws Exception {
+        Method javaMethod = analyzer.getJavaMethod(method.getSignature(), instrumented);
+
+        // hardcoded for now
+        ArgMap[] argMaps = new ArgMap[5];
+
+        for (int i = 0; i < 5; i++) {
+            ArgMap argMap = new ArgMap();
+            argMaps[i] = argMap;
+            boolean deadlineReached = false;
+
+            if (ctor != null) {
+                ObjectInstantiation.generateArgs(ctor.getParameters(), MethodType.CTOR, argMap, true);
+            }
+
+            ObjectInstantiation.generateArgs(javaMethod.getParameters(), MethodType.METHOD, argMap, true);
+
+            logger.info("Running tests starting with arguments {}", argMap);
+
+            while (true) {
+                // Check time budget
+                if (System.currentTimeMillis() >= executionDeadline) {
+                    logger.info("Time budget exceeded during concrete-driven execution, stopping...");
+                    deadlineReached = true;
+                    break;
+                }
+
+                // Concrete execution followed by symbolic replay
+                TraceManager.clearEntries();
+                concrete.execute(ctor, javaMethod, argMap);
+                Optional<SymbolicState> finalState = runSymbolicReplay(method);
+                logger.debug("Replayed state: {}", finalState.isPresent() ? finalState.get() : "none");
+
+                if (finalState.isPresent()) {
+                    boolean isNew = searchStrategy.add(finalState.get());
+                    // Only add a new test case if this path has not been explored before
+                    // Note: this particular check will catch only certain edge cases that are not
+                    // caught by the search strategy
+                    if (isNew) {
+                        // For the first concrete execution, argMap is populated by the concrete
+                        // executor
+                        generator.addMethodTestCase(method, ctorSoot, argMap);
+                    }
+                }
+
+                if (deadlineReached) {
+                    break;
+                }
+
+                Optional<Pair<Model, SymbolicState>> candidate = searchStrategy.next(validator, executionDeadline);
+                // If we cannot find a new path condition, we are done
+                if (candidate.isEmpty()) {
+                    break;
+                }
+
+                // If a new path condition is found, evaluate it to get the next set of
+                // arguments which will be used in the next iteration for concrete execution
+                Pair<Model, SymbolicState> pair = candidate.get();
+                argMap = validator.evaluate(pair.getFirst(), pair.getSecond().returnToRootCaller(), false);
+            }
+        }
+
+
     }
 }

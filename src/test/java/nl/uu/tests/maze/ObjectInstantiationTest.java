@@ -42,7 +42,7 @@ class ObjectInstantiationTest {
         argMap.set("marg3", 4L);
         argMap.set("marg4", (short) 5);
         argMap.set("marg5", (byte) 6);
-        Object[] args = ObjectInstantiation.generateArgs(params, MethodType.METHOD, argMap);
+        Object[] args = ObjectInstantiation.generateArgs(params, MethodType.METHOD, argMap, false);
         assertEquals(9, args.length);
         assertEquals(1, args[0]);
         assertInstanceOf(Double.class, args[1]);
