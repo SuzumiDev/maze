@@ -509,7 +509,11 @@ public class DSEController {
         // hardcoded for now
         ArgMap[] argMaps = new ArgMap[5];
 
+        long timePerExecution = (executionDeadline - System.currentTimeMillis()) / 5;
+
         for (int i = 0; i < 5; i++) {
+            long currentDeadline = System.currentTimeMillis() + timePerExecution;
+
             ArgMap argMap = new ArgMap();
             argMaps[i] = argMap;
             boolean deadlineReached = false;
@@ -524,7 +528,7 @@ public class DSEController {
 
             while (true) {
                 // Check time budget
-                if (System.currentTimeMillis() >= executionDeadline) {
+                if (System.currentTimeMillis() >= currentDeadline || System.currentTimeMillis() >= executionDeadline) {
                     logger.info("Time budget exceeded during concrete-driven execution, stopping...");
                     deadlineReached = true;
                     break;
