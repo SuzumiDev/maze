@@ -237,6 +237,8 @@ public class DSEController {
                     break;
                 }
 
+                long budget = 0;
+
                 // Set execution deadline for this method
                 if (timeBudget > 0) {
                     // Divide remaining time budget by the number of remaining methods
@@ -246,6 +248,7 @@ public class DSEController {
                     // easier to execute
                     double factor = muts.length - i > 1 ? 1.1 : 1.0;
                     long methodBudget = (long) (remainingBudget * factor / (muts.length - i));
+                    budget = methodBudget;
                     executionDeadline = System.currentTimeMillis() + methodBudget;
                     logger.info("Time budget for method {}: {}", method.getName(), methodBudget);
                 }
@@ -254,7 +257,7 @@ public class DSEController {
                     strategy.reset();
                     logger.info("Processing method: {}", method.getName());
                     if (runWithRandom)
-                        runConcreteDrivenMultipleStartingStates(method, strategy);
+                        runConcreteDrivenMultipleStartingStates(method, strategy, budget);
                     else
                         runConcreteDriven(method, strategy);
                 } catch (Exception e) {
@@ -503,16 +506,23 @@ public class DSEController {
         }
     }
 
-    private void runConcreteDrivenMultipleStartingStates(JavaSootMethod method, ConcreteSearchStrategy searchStrategy) throws Exception {
+    private void runConcreteDrivenMultipleStartingStates(JavaSootMethod method, ConcreteSearchStrategy searchStrategy, long methodBudget) throws Exception {
         Method javaMethod = analyzer.getJavaMethod(method.getSignature(), instrumented);
 
         // hardcoded for now
         ArgMap[] argMaps = new ArgMap[5];
 
-        long timePerExecution = (executionDeadline - System.currentTimeMillis()) / 5;
+        long timePerExecution = methodBudget / 5;
+
+        logger.info("method budget {}", methodBudget);
+
+        logger.info("time per exec {}", timePerExecution);
 
         for (int i = 0; i < 5; i++) {
             long currentDeadline = System.currentTimeMillis() + timePerExecution;
+
+            logger.info("current deadline {}", currentDeadline);
+            logger.info("exec deadline {}", executionDeadline);
 
             ArgMap argMap = new ArgMap();
             argMaps[i] = argMap;
