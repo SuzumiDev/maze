@@ -509,30 +509,31 @@ public class DSEController {
     private void runConcreteDrivenMultipleStartingStates(JavaSootMethod method, ConcreteSearchStrategy searchStrategy, long methodBudget) throws Exception {
         Method javaMethod = analyzer.getJavaMethod(method.getSignature(), instrumented);
 
+        int runs = 5; // todo: make this a CLI option
+
         // hardcoded for now
         ArgMap[] argMaps = new ArgMap[5];
-
-        long timePerExecution = methodBudget / 5;
-
-        logger.info("method budget {}", methodBudget);
-
-        logger.info("time per exec {}", timePerExecution);
-
-        for (int i = 0; i < 5; i++) {
-            long currentDeadline = System.currentTimeMillis() + timePerExecution;
-
-            logger.info("current deadline {}", currentDeadline);
-            logger.info("exec deadline {}", executionDeadline);
-
+        for (int i = 0; i < runs; i++) {
             ArgMap argMap = new ArgMap();
             argMaps[i] = argMap;
-            boolean deadlineReached = false;
 
             if (ctor != null) {
                 ObjectInstantiation.generateArgs(ctor.getParameters(), MethodType.CTOR, argMap, true);
             }
 
             ObjectInstantiation.generateArgs(javaMethod.getParameters(), MethodType.METHOD, argMap, true);
+        }
+
+        long timePerExecution = methodBudget / 5;
+
+        logger.info("Starting {} runs with arguments: {}", runs, argMaps);
+
+        for (int i = 0; i < runs; i++) {
+            long currentDeadline = System.currentTimeMillis() + timePerExecution;
+
+            ArgMap argMap = argMaps[i];
+
+            boolean deadlineReached = false;
 
             logger.info("Running tests starting with arguments {}", argMap);
 

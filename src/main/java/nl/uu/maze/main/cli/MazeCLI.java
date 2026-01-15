@@ -101,7 +101,7 @@ public class MazeCLI implements Callable<Integer> {
                     searchHeuristics, heuristicWeights, timeBudget);
 
             Long start = System.currentTimeMillis();
-            DSEController controller = new DSEController(classPath, concreteDriven, strategy, outPath,
+            DSEController controller = new DSECont  roller(classPath, concreteDriven, strategy, outPath,
                     methodName, maxDepth, testTimeout, packageName, junitVersion.isJUnit4(), runWithRandom);
             controller.run(className, timeBudget);
             Long end = System.currentTimeMillis();
