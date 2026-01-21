@@ -509,10 +509,11 @@ public class DSEController {
     private void runConcreteDrivenMultipleStartingStates(JavaSootMethod method, ConcreteSearchStrategy searchStrategy, long methodBudget) throws Exception {
         Method javaMethod = analyzer.getJavaMethod(method.getSignature(), instrumented);
 
-        int runs = 5; // todo: make this a CLI option
+        final int runs = 5; // todo: make this a CLI option
 
         // hardcoded for now
         ArgMap[] argMaps = new ArgMap[5];
+        int curArg = 0;
         for (int i = 0; i < runs; i++) {
             ArgMap argMap = new ArgMap();
             argMaps[i] = argMap;
@@ -524,60 +525,58 @@ public class DSEController {
             ObjectInstantiation.generateArgs(javaMethod.getParameters(), MethodType.METHOD, argMap, true);
         }
 
-        long timePerExecution = methodBudget / 5;
+        ArgMap argMap = argMaps[0];
 
-        logger.info("Starting {} runs with arguments: {}", runs, argMaps);
+        boolean deadlineReached = false;
 
-        for (int i = 0; i < runs; i++) {
-            long currentDeadline = System.currentTimeMillis() + timePerExecution;
+        logger.info("Running tests starting with arguments {}", argMap);
 
-            ArgMap argMap = argMaps[i];
-
-            boolean deadlineReached = false;
-
-            logger.info("Running tests starting with arguments {}", argMap);
-
-            while (true) {
-                // Check time budget
-                if (System.currentTimeMillis() >= currentDeadline || System.currentTimeMillis() >= executionDeadline) {
-                    logger.info("Time budget exceeded during concrete-driven execution, stopping...");
-                    deadlineReached = true;
-                    break;
-                }
-
-                // Concrete execution followed by symbolic replay
-                TraceManager.clearEntries();
-                concrete.execute(ctor, javaMethod, argMap);
-                Optional<SymbolicState> finalState = runSymbolicReplay(method);
-                logger.debug("Replayed state: {}", finalState.isPresent() ? finalState.get() : "none");
-
-                if (finalState.isPresent()) {
-                    boolean isNew = searchStrategy.add(finalState.get());
-                    // Only add a new test case if this path has not been explored before
-                    // Note: this particular check will catch only certain edge cases that are not
-                    // caught by the search strategy
-                    if (isNew) {
-                        // For the first concrete execution, argMap is populated by the concrete
-                        // executor
-                        generator.addMethodTestCase(method, ctorSoot, argMap);
-                    }
-                }
-
-                if (deadlineReached) {
-                    break;
-                }
-
-                Optional<Pair<Model, SymbolicState>> candidate = searchStrategy.next(validator, executionDeadline);
-                // If we cannot find a new path condition, we are done
-                if (candidate.isEmpty()) {
-                    break;
-                }
-
-                // If a new path condition is found, evaluate it to get the next set of
-                // arguments which will be used in the next iteration for concrete execution
-                Pair<Model, SymbolicState> pair = candidate.get();
-                argMap = validator.evaluate(pair.getFirst(), pair.getSecond().returnToRootCaller(), false);
+        while (true) {
+            // Check time budget
+            if (System.currentTimeMillis() >= executionDeadline) {
+                logger.info("Time budget exceeded during concrete-driven execution, stopping...");
+                deadlineReached = true;
+                break;
             }
+
+            // Concrete execution followed by symbolic replay
+            TraceManager.clearEntries();
+            concrete.execute(ctor, javaMethod, argMap);
+            Optional<SymbolicState> finalState = runSymbolicReplay(method);
+            logger.debug("Replayed state: {}", finalState.isPresent() ? finalState.get() : "none");
+
+            if (finalState.isPresent()) {
+                boolean isNew = searchStrategy.add(finalState.get());
+                // Only add a new test case if this path has not been explored before
+                // Note: this particular check will catch only certain edge cases that are not
+                // caught by the search strategy
+                if (isNew) {
+                    // For the first concrete execution, argMap is populated by the concrete
+                    // executor
+                    generator.addMethodTestCase(method, ctorSoot, argMap);
+                }
+            }
+
+            if (deadlineReached) {
+                break;
+            }
+
+            if (curArg < runs) {
+                argMap = argMaps[++curArg];
+                logger.info("Continuing with next arg set {}", argMap);
+                continue;
+            }
+
+            Optional<Pair<Model, SymbolicState>> candidate = searchStrategy.next(validator, executionDeadline);
+            // If we cannot find a new path condition, we are done
+            if (candidate.isEmpty()) {
+                break;
+            }
+
+            // If a new path condition is found, evaluate it to get the next set of
+            // arguments which will be used in the next iteration for concrete execution
+            Pair<Model, SymbolicState> pair = candidate.get();
+            argMap = validator.evaluate(pair.getFirst(), pair.getSecond().returnToRootCaller(), false);
         }
 
 
