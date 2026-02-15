@@ -17,6 +17,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+import nl.uu.maze.execution.concrete.ExecutionResult;
 import nl.uu.maze.execution.concrete.ObjectInstantiation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -262,7 +263,7 @@ public class DSEController {
                         runConcreteDriven(method, strategy);
                 } catch (Exception e) {
                     logger.error("Error processing method {}: {}", method.getName(), e.getMessage());
-                    logger.debug("Error stack trace: ", e);
+                    logger.error("Error stack trace: ", e);
                     // Continue with the next method even if an error occurs
                 }
             }
@@ -473,7 +474,10 @@ public class DSEController {
 
             // Concrete execution followed by symbolic replay
             TraceManager.clearEntries();
-            concrete.execute(ctor, javaMethod, argMap);
+            ExecutionResult res = concrete.execute(ctor, javaMethod, argMap);
+            if (res.isException()) {
+                logger.info("method threw an exception {}", res.exception());
+            }
             Optional<SymbolicState> finalState = runSymbolicReplay(method);
             logger.debug("Replayed state: {}", finalState.isPresent() ? finalState.get() : "none");
 
@@ -561,8 +565,10 @@ public class DSEController {
                 break;
             }
 
+            curArg++;
+
             if (curArg < runs) {
-                argMap = argMaps[++curArg];
+                argMap = argMaps[curArg];
                 logger.info("Continuing with next arg set {}", argMap);
                 continue;
             }
@@ -577,6 +583,7 @@ public class DSEController {
             // arguments which will be used in the next iteration for concrete execution
             Pair<Model, SymbolicState> pair = candidate.get();
             argMap = validator.evaluate(pair.getFirst(), pair.getSecond().returnToRootCaller(), false);
+            logger.info("Continuing with new arg set {}", argMap);
         }
 
 
