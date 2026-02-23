@@ -1,10 +1,7 @@
 package nl.uu.maze.execution.concrete;
 
-import java.lang.reflect.Array;
-import java.lang.reflect.Constructor;
-import java.util.Arrays;
-import java.util.Random;
-import java.lang.reflect.Parameter;
+import java.lang.reflect.*;
+import java.util.*;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,6 +9,9 @@ import org.slf4j.LoggerFactory;
 import nl.uu.maze.analysis.JavaAnalyzer;
 import nl.uu.maze.execution.ArgMap;
 import nl.uu.maze.execution.MethodType;
+import sootup.core.jimple.common.stmt.JIfStmt;
+import sootup.core.jimple.common.stmt.Stmt;
+import sootup.java.core.JavaSootMethod;
 
 /**
  * Instantiates objects using Java reflection and randomly generated
@@ -130,6 +130,77 @@ public class ObjectInstantiation {
         }
 
         return arguments;
+    }
+
+    private static List<String> getSideEffects(Class<?> clazz, Constructor<?> ctor) {
+        List<String> initializedFields = new ArrayList<>();
+
+        if (clazz.getDeclaredFields().length == 0)
+            return initializedFields;
+
+        Object[] args = generateArgs(ctor.getParameters(), MethodType.CTOR, null);
+        try {
+            Object instance = ctor.newInstance(args);
+            for (Field f : clazz.getDeclaredFields()) {
+                f.setAccessible(true);
+                if (f.get(instance) != null) {
+                    initializedFields.add(f.getName());
+                }
+            }
+        } catch (Exception e) {
+            logger.info("Constructor {} for class {} threw an exception when analyzing its side effects", ctor, clazz);
+            logger.info(e.getMessage());
+        }
+
+        return initializedFields;
+    }
+
+    private static List<String> getSideEffects(Object instance, Method method) {
+        List<String> changedFields = new ArrayList<>();
+        Map<String, Object> originalFields = new HashMap<>();
+
+        if (instance.getClass().getDeclaredFields().length == 0)
+            return changedFields;
+
+        try {
+            for (Field f : instance.getClass().getDeclaredFields()) {
+                f.setAccessible(true);
+                originalFields.put(f.getName(), f.get(instance));
+            }
+
+            Object[] args = generateArgs(method.getParameters(), MethodType.METHOD, null);
+
+            method.invoke(instance, args);
+
+            for (Field f : instance.getClass().getDeclaredFields()) {
+                f.setAccessible(true);
+                if (!originalFields.get(f.getName()).equals(f.get(instance))) {
+                    changedFields.add(f.getName());
+                }
+            }
+
+        } catch (Exception e) {
+            logger.info("Method {} for class {} threw an exception when analyzing its side effects", method, instance.getClass());
+            logger.info(e.getMessage());
+        }
+
+        return changedFields;
+    }
+
+    private static List<String> getAccessedVariables(JavaSootMethod method) {
+        List<String> variables = new ArrayList<>();
+
+        for (Stmt stmt : method.getBody().getStmts()) {
+            switch (stmt) {
+                case JIfStmt jIfStmt -> {
+
+                }
+
+                default -> throw new UnsupportedOperationException();
+            }
+        }
+
+        return variables;
     }
 
     private static Object getDefault(Class<?> type) {
