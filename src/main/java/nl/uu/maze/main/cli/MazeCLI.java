@@ -9,6 +9,7 @@ import ch.qos.logback.classic.Level;
 
 import nl.uu.maze.execution.DSEController;
 import nl.uu.maze.main.cli.converters.*;
+import nl.uu.maze.fuzzing.FuzzingFactory.FuzzingStrategy;
 import nl.uu.maze.search.heuristic.SearchHeuristicFactory.ValidSearchHeuristic;
 import nl.uu.maze.search.strategy.SearchStrategy;
 import nl.uu.maze.search.strategy.SearchStrategyFactory;
@@ -81,6 +82,10 @@ public class MazeCLI implements Callable<Integer> {
             "--concrete-driven" }, description = "Use concrete-driven DSE instead of symbolic-driven DSE (default: ${DEFAULT-VALUE})", defaultValue = "false", paramLabel = "<true|false>")
     private boolean concreteDriven;
 
+    @Option(names = { "-f",
+            "--fuzzer"}, description = "One of the available fuzzing methods for concrete-driven execution (must use -C for this to work) (default: ${DEFAULT-VALUE})", defaultValue = "NONE", paramLabel = "<name>")
+    private FuzzingStrategy fuzzingStrategy;
+
     @Override
     public Integer call() {
         try {
@@ -98,7 +103,7 @@ public class MazeCLI implements Callable<Integer> {
                     searchHeuristics, heuristicWeights, timeBudget);
 
             Long start = System.currentTimeMillis();
-            DSEController controller = new DSEController(classPath, concreteDriven, strategy, outPath,
+            DSEController controller = new DSEController(classPath, concreteDriven, strategy, fuzzingStrategy, outPath,
                     methodName, maxDepth, testTimeout, packageName, junitVersion.isJUnit4());
             controller.run(className, timeBudget);
             Long end = System.currentTimeMillis();

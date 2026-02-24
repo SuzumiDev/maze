@@ -25,6 +25,7 @@ import com.microsoft.z3.Model;
 import nl.uu.maze.analysis.JavaAnalyzer;
 import nl.uu.maze.execution.concrete.ConcreteExecutor;
 import nl.uu.maze.execution.symbolic.*;
+import nl.uu.maze.fuzzing.FuzzingFactory.FuzzingStrategy;
 import nl.uu.maze.generation.JUnitTestGenerator;
 import nl.uu.maze.instrument.*;
 import nl.uu.maze.search.strategy.ConcreteSearchStrategy;
@@ -49,6 +50,7 @@ public class DSEController {
     private final boolean concreteDriven;
     private final Path outPath;
     private final String methodName;
+    private final FuzzingStrategy fuzzingStrategy;
     private final SearchStrategy<?> searchStrategy;
     /** Search strategy used for symbolic replay of a trace (DFS). */
     private final SymbolicSearchStrategy replayStrategy;
@@ -93,7 +95,7 @@ public class DSEController {
      * @param testTimeout    The timeout to apply to generated test cases in ms
      * @param packageName    The package name for the generated test files
      */
-    public DSEController(String classPath, boolean concreteDriven, SearchStrategy<?> searchStrategy,
+    public DSEController(String classPath, boolean concreteDriven, SearchStrategy<?> searchStrategy, FuzzingStrategy fuzzingStrategy,
             String outPath, String methodName, int maxDepth, long testTimeout, String packageName, boolean targetJUnit4)
             throws Exception {
         instrumenter = new BytecodeInstrumenter(classPath);
@@ -112,6 +114,7 @@ public class DSEController {
         this.methodName = methodName;
         this.maxDepth = maxDepth;
         this.concreteDriven = concreteDriven;
+        this.fuzzingStrategy = fuzzingStrategy;
         this.searchStrategy = searchStrategy;
         this.replayStrategy = new SymbolicSearchStrategy(new DFS<SymbolicState>());
 
