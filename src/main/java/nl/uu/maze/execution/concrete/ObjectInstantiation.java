@@ -9,8 +9,10 @@ import org.slf4j.LoggerFactory;
 import nl.uu.maze.analysis.JavaAnalyzer;
 import nl.uu.maze.execution.ArgMap;
 import nl.uu.maze.execution.MethodType;
+import sootup.core.jimple.common.stmt.JAssignStmt;
 import sootup.core.jimple.common.stmt.JIfStmt;
 import sootup.core.jimple.common.stmt.Stmt;
+import sootup.core.jimple.javabytecode.stmt.JSwitchStmt;
 import sootup.java.core.JavaSootMethod;
 
 /**
@@ -132,7 +134,7 @@ public class ObjectInstantiation {
         return arguments;
     }
 
-    private static List<String> getSideEffects(Class<?> clazz, Constructor<?> ctor) {
+    public static List<String> getSideEffects(Class<?> clazz, Constructor<?> ctor) {
         List<String> initializedFields = new ArrayList<>();
 
         if (clazz.getDeclaredFields().length == 0)
@@ -155,7 +157,7 @@ public class ObjectInstantiation {
         return initializedFields;
     }
 
-    private static List<String> getSideEffects(Object instance, Method method) {
+    public static List<String> getSideEffects(Object instance, Method method) {
         List<String> changedFields = new ArrayList<>();
         Map<String, Object> originalFields = new HashMap<>();
 
@@ -187,18 +189,16 @@ public class ObjectInstantiation {
         return changedFields;
     }
 
-    private static List<String> getAccessedVariables(JavaSootMethod method) {
-        List<String> variables = new ArrayList<>();
+    public static Set<String> getAccessedVariables(JavaSootMethod method, Class<?> clazz) {
+        Set<String> variables = new HashSet<>();
 
         for (Stmt stmt : method.getBody().getStmts()) {
-            switch (stmt) {
-                case JIfStmt jIfStmt -> {
-
-                }
-
-                default -> throw new UnsupportedOperationException();
+            if (stmt instanceof JAssignStmt jAssignStmt) {
+                variables.add(jAssignStmt.getFieldRef().getFieldSignature().getName());
             }
         }
+
+        logger.debug("accessed variables from method {} are {}", method.getName(), variables);
 
         return variables;
     }

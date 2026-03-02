@@ -17,6 +17,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+import nl.uu.maze.execution.concrete.ObjectInstantiation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -229,6 +230,8 @@ public class DSEController {
             Arrays.sort(muts, (m1, m2) -> m1.getName().compareTo(m2.getName()));
             for (i = 0; i < muts.length; i++) {
                 JavaSootMethod method = muts[i];
+                ObjectInstantiation.getAccessedVariables(method, clazz);
+
                 if (System.currentTimeMillis() >= overallDeadline) {
                     logger.info("Time budget exceeded while iterating methods under test, stopping...");
                     break;
