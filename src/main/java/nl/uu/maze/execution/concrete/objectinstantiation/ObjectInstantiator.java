@@ -1,9 +1,9 @@
 package nl.uu.maze.execution.concrete.objectinstantiation;
 
 import nl.uu.maze.execution.ArgMap;
+import nl.uu.maze.execution.concrete.ExecutionResult;
 import nl.uu.maze.execution.concrete.objectinstantiation.constructor.ConstructorSelector;
 import nl.uu.maze.execution.concrete.objectinstantiation.setters.SettersSelector;
-import sootup.java.core.JavaSootMethod;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -21,14 +21,22 @@ public class ObjectInstantiator {
         this.selectedSetters = settersSelector.selectSetters(this.selectedConstructor);
     }
 
-    public Object createInstance(ArgMap argMap) throws InvocationTargetException, InstantiationException, IllegalAccessException {
+    public ExecutionResult createInstance(ArgMap argMap) {
         if (selectedConstructor == null) throw new IllegalStateException("No constructor selected!");
-        if (selectedSetters == null) throw new IllegalAccessException("Setters not scanned!");
-        Object instance = selectedConstructor.newInstance(argMap);
-        for (Method m : selectedSetters) {
-            m.invoke(instance, argMap);
+        if (selectedSetters == null) throw new IllegalStateException("Setters not scanned!");
+
+        try {
+            selectedConstructor.setAccessible(true); // todo: this needs to be looked at properly
+            Object instance = selectedConstructor.newInstance(argMap);
+
+            for (Method m : selectedSetters) {
+                m.invoke(instance, argMap);
+            }
+
+            return new ExecutionResult(instance, null, false);
+        } catch (Exception e) {
+            return new ExecutionResult(null, e, true);
         }
-        return instance;
     }
 
     public Constructor<?> getSelectedConstructor() {

@@ -2,6 +2,7 @@ package nl.uu.maze.execution;
 
 import java.io.File;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -470,26 +471,8 @@ public class DSEController {
         boolean deadlineReached = false;
 
         // Setup instance for this method
-        ConstructorSelector constructorSelector;
-        SettersSelector settersSelector;
-
-        switch (constructorSelectionStrategy) {
-            case Usage -> constructorSelector = new UsageConstructorSelector(method, clazz);
-            case Random -> constructorSelector = new RandomConstructorSelector(method, clazz);
-            case Biggest -> constructorSelector = new BiggestConstructorSelector(method, clazz);
-            case Smallest -> constructorSelector = new SmallestConstructorSelector(method, clazz);
-            default -> throw new IllegalArgumentException("No selected constructor selection strategy!");
-        }
-
-        switch (settersSelectionStrategy) {
-            case Usage -> settersSelector = new UsageSettersSelector(method, clazz);
-            case All -> settersSelector = new AllSettersSelector(method, clazz);
-            case None -> settersSelector = new NoSettersSelector(method, clazz);
-            default -> throw new IllegalArgumentException("No selected setters selection strategy!");
-        }
-
-        ObjectInstantiator instantiator = new ObjectInstantiator(constructorSelector, settersSelector);
-
+        ObjectInstantiator instantiator = getObjectInstantiator(method);
+        this.ctor = instantiator.getSelectedConstructor();
 
         // Get corresponding CFG
         ctorSoot = analyzer.getSootConstructor(sootClass.getMethods(), ctor);
@@ -507,7 +490,7 @@ public class DSEController {
 
             // Concrete execution followed by symbolic replay
             TraceManager.clearEntries();
-            concrete.execute(ctor, javaMethod, argMap);
+            concrete.execute(javaMethod, argMap, instantiator);
             Optional<SymbolicState> finalState = runSymbolicReplay(method);
             logger.debug("Replayed state: {}", finalState.isPresent() ? finalState.get() : "none");
 
@@ -538,5 +521,27 @@ public class DSEController {
             Pair<Model, SymbolicState> pair = candidate.get();
             argMap = validator.evaluate(pair.getFirst(), pair.getSecond().returnToRootCaller(), false);
         }
+    }
+
+    private ObjectInstantiator getObjectInstantiator(JavaSootMethod method) throws InvocationTargetException, InstantiationException, IllegalAccessException {
+        ConstructorSelector constructorSelector;
+        SettersSelector settersSelector;
+
+        switch (constructorSelectionStrategy) {
+            case Usage -> constructorSelector = new UsageConstructorSelector(method, clazz);
+            case Random -> constructorSelector = new RandomConstructorSelector(method, clazz);
+            case Biggest -> constructorSelector = new BiggestConstructorSelector(method, clazz);
+            case Smallest -> constructorSelector = new SmallestConstructorSelector(method, clazz);
+            default -> throw new IllegalArgumentException("No selected constructor selection strategy!");
+        }
+
+        switch (settersSelectionStrategy) {
+            case Usage -> settersSelector = new UsageSettersSelector(method, clazz);
+            case All -> settersSelector = new AllSettersSelector(method, clazz);
+            case None -> settersSelector = new NoSettersSelector(method, clazz);
+            default -> throw new IllegalArgumentException("No selected setters selection strategy!");
+        }
+
+        return new ObjectInstantiator(constructorSelector, settersSelector);
     }
 }

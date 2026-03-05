@@ -5,6 +5,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 
+import nl.uu.maze.execution.concrete.objectinstantiation.ObjectInstantiator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,20 +18,18 @@ public class ConcreteExecutor {
     /**
      * Run concrete execution on the given method, using the given constructor to
      * create an instance of the class containing the method if necessary.
-     * 
-     * @param ctor   The constructor to use to create an instance of the class
-     *               containing the method
+     *
      * @param method The method to invoke
      * @param argMap {@link ArgMap} containing the arguments to pass to the
      *               constructor and method invocation
      * @return An instance of {@link ExecutionResult} containing the return value
      *         or the exception thrown by the constructor or method
      */
-    public ExecutionResult execute(Constructor<?> ctor, Method method, ArgMap argMap) {
+    public ExecutionResult execute(Method method, ArgMap argMap, ObjectInstantiator objectInstantiator) {
         // If not static, create an instance of the class
         Object instance = null;
         if (!Modifier.isStatic(method.getModifiers())) {
-            ExecutionResult result = ObjectInstantiation.createInstance(ctor, argMap);
+            ExecutionResult result = objectInstantiator.createInstance(argMap); // todo: check if the arguments are now properly handled in the condition negation
             // If constructor throws an exception, return it
             if (result.isException()) {
                 return result;
