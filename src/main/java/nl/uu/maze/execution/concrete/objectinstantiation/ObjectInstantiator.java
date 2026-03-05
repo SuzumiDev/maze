@@ -16,9 +16,9 @@ public class ObjectInstantiator {
     private final List<Method> selectedSetters;
 
 
-    public ObjectInstantiator(ConstructorSelector constructorSelector, SettersSelector settersSelector) {
+    public ObjectInstantiator(ConstructorSelector constructorSelector, SettersSelector settersSelector) throws InvocationTargetException, InstantiationException, IllegalAccessException {
         this.selectedConstructor = constructorSelector.selectConstructor();
-        this.selectedSetters = settersSelector.selectSetters();
+        this.selectedSetters = settersSelector.selectSetters(this.selectedConstructor);
     }
 
     public Object createInstance(ArgMap argMap) throws InvocationTargetException, InstantiationException, IllegalAccessException {
@@ -29,6 +29,18 @@ public class ObjectInstantiator {
             m.invoke(instance, argMap);
         }
         return instance;
+    }
+
+    public Constructor<?> getSelectedConstructor() {
+        return this.selectedConstructor;
+    }
+
+    public enum ConstructorSelectionStrategy {
+        Biggest, Random, Smallest, Usage
+    }
+
+    public enum SettersSelectionStrategy {
+        All, None, Usage
     }
 
 

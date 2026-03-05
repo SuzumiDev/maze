@@ -18,6 +18,13 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 import nl.uu.maze.execution.concrete.ObjectInstantiation;
+import nl.uu.maze.execution.concrete.objectinstantiation.ObjectInstantiator;
+import nl.uu.maze.execution.concrete.objectinstantiation.ObjectInstantiator.*;
+import nl.uu.maze.execution.concrete.objectinstantiation.constructor.*;
+import nl.uu.maze.execution.concrete.objectinstantiation.setters.AllSettersSelector;
+import nl.uu.maze.execution.concrete.objectinstantiation.setters.NoSettersSelector;
+import nl.uu.maze.execution.concrete.objectinstantiation.setters.SettersSelector;
+import nl.uu.maze.execution.concrete.objectinstantiation.setters.UsageSettersSelector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,6 +58,8 @@ public class DSEController {
     private final Path outPath;
     private final String methodName;
     private final SearchStrategy<?> searchStrategy;
+    private final ConstructorSelectionStrategy constructorSelectionStrategy;
+    private final SettersSelectionStrategy settersSelectionStrategy;
     /** Search strategy used for symbolic replay of a trace (DFS). */
     private final SymbolicSearchStrategy replayStrategy;
     private final JavaAnalyzer analyzer;
@@ -94,7 +103,7 @@ public class DSEController {
      * @param testTimeout    The timeout to apply to generated test cases in ms
      * @param packageName    The package name for the generated test files
      */
-    public DSEController(String classPath, boolean concreteDriven, SearchStrategy<?> searchStrategy,
+    public DSEController(String classPath, boolean concreteDriven, SearchStrategy<?> searchStrategy, ConstructorSelectionStrategy constructorSelectionStrategy, SettersSelectionStrategy settersSelectionStrategy,
             String outPath, String methodName, int maxDepth, long testTimeout, String packageName, boolean targetJUnit4)
             throws Exception {
         instrumenter = new BytecodeInstrumenter(classPath);
@@ -114,6 +123,8 @@ public class DSEController {
         this.maxDepth = maxDepth;
         this.concreteDriven = concreteDriven;
         this.searchStrategy = searchStrategy;
+        this.constructorSelectionStrategy = constructorSelectionStrategy;
+        this.settersSelectionStrategy = settersSelectionStrategy;
         this.replayStrategy = new SymbolicSearchStrategy(new DFS<SymbolicState>());
 
         this.analyzer = JavaAnalyzer.initialize(classPath, classLoader);
@@ -177,16 +188,18 @@ public class DSEController {
 
         // If class includes non-static methods, need to execute constructor first
         if (!nonStaticMuts.isEmpty()) {
-            ctor = analyzer.getJavaConstructor(instrumented != null ? instrumented : clazz);
-            if (ctor == null) {
-                throw new Exception("No constructor found for class: " + clazz.getName());
-            }
+            if (!concreteDriven) {
+                ctor = analyzer.getJavaConstructor(instrumented != null ? instrumented : clazz);
+                if (ctor == null) {
+                    throw new Exception("No constructor found for class: " + clazz.getName());
+                }
 
-            // Get corresponding CFG
-            ctorSoot = analyzer.getSootConstructor(methods, ctor);
-            ctorCfg = analyzer.getCFG(ctorSoot);
-            initStates = new HashMap<>();
-            logger.info("Using constructor: {}", ctorSoot.getSignature());
+                // Get corresponding CFG
+                ctorSoot = analyzer.getSootConstructor(methods, ctor);
+                ctorCfg = analyzer.getCFG(ctorSoot);
+                initStates = new HashMap<>();
+                logger.info("Using constructor: {}", ctorSoot.getSignature());
+            }
         }
 
         logger.info("Running {} DSE on class: {}", concreteDriven ? "concrete-driven" : "symbolic-driven",
@@ -230,7 +243,6 @@ public class DSEController {
             Arrays.sort(muts, (m1, m2) -> m1.getName().compareTo(m2.getName()));
             for (i = 0; i < muts.length; i++) {
                 JavaSootMethod method = muts[i];
-                ObjectInstantiation.getAccessedVariables(method, clazz);
 
                 if (System.currentTimeMillis() >= overallDeadline) {
                     logger.info("Time budget exceeded while iterating methods under test, stopping...");
@@ -456,6 +468,34 @@ public class DSEController {
         Method javaMethod = analyzer.getJavaMethod(method.getSignature(), instrumented);
         ArgMap argMap = new ArgMap();
         boolean deadlineReached = false;
+
+        // Setup instance for this method
+        ConstructorSelector constructorSelector;
+        SettersSelector settersSelector;
+
+        switch (constructorSelectionStrategy) {
+            case Usage -> constructorSelector = new UsageConstructorSelector(method, clazz);
+            case Random -> constructorSelector = new RandomConstructorSelector(method, clazz);
+            case Biggest -> constructorSelector = new BiggestConstructorSelector(method, clazz);
+            case Smallest -> constructorSelector = new SmallestConstructorSelector(method, clazz);
+            default -> throw new IllegalArgumentException("No selected constructor selection strategy!");
+        }
+
+        switch (settersSelectionStrategy) {
+            case Usage -> settersSelector = new UsageSettersSelector(method, clazz);
+            case All -> settersSelector = new AllSettersSelector(method, clazz);
+            case None -> settersSelector = new NoSettersSelector(method, clazz);
+            default -> throw new IllegalArgumentException("No selected setters selection strategy!");
+        }
+
+        ObjectInstantiator instantiator = new ObjectInstantiator(constructorSelector, settersSelector);
+
+
+        // Get corresponding CFG
+        ctorSoot = analyzer.getSootConstructor(sootClass.getMethods(), ctor);
+        ctorCfg = analyzer.getCFG(ctorSoot);
+        initStates = new HashMap<>();
+        logger.info("Using constructor: {}", ctorSoot.getSignature());
 
         while (true) {
             // Check time budget

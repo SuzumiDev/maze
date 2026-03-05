@@ -256,6 +256,21 @@ public class JavaAnalyzer {
         return ctors[0];
     }
 
+    public Class<?> getConcreteClass(Class<?> clazz) {
+        if (clazz.isInterface()) {
+            Class<?> implClass = getDefaultImplementation(clazz);
+            if (implClass != null) {
+                logger.debug("Using default implementation for interface {}: {}", clazz.getName(), implClass.getName());
+                return implClass;
+            } else {
+                logger.warn("Cannot find constructor for an interface without default implementation: {}",
+                        clazz.getName());
+                return null;
+            }
+        }
+        return clazz;
+    }
+
     /**
      * Returns the {@link JavaSootMethod} corresponding to a given Java
      * {@link Constructor}.

@@ -9,7 +9,7 @@ public class RandomConstructorSelector extends ConstructorSelector {
 
     private static final Random rand = new Random();
 
-    protected RandomConstructorSelector(JavaSootMethod method, Class<?> clazz) {
+    public RandomConstructorSelector(JavaSootMethod method, Class<?> clazz) {
         super(method, clazz);
     }
 

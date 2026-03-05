@@ -3,6 +3,8 @@ package nl.uu.maze.main.cli;
 import java.util.List;
 import java.util.concurrent.Callable;
 
+import nl.uu.maze.execution.concrete.objectinstantiation.ObjectInstantiator.SettersSelectionStrategy;
+import nl.uu.maze.execution.concrete.objectinstantiation.ObjectInstantiator.ConstructorSelectionStrategy;
 import org.slf4j.LoggerFactory;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.Level;
@@ -81,6 +83,14 @@ public class MazeCLI implements Callable<Integer> {
             "--concrete-driven" }, description = "Use concrete-driven DSE instead of symbolic-driven DSE (default: ${DEFAULT-VALUE})", defaultValue = "false", paramLabel = "<true|false>")
     private boolean concreteDriven;
 
+    @Option(names = { "-Cs",
+            "--constructor-selection" }, description = "Constructor selection strategy for concrete-driven DSE (default: ${DEFAULT-VALUE}, options: Smallest, Biggest, Random, Usage)", defaultValue = "Smallest", paramLabel = "<name>")
+    private ConstructorSelectionStrategy constructorSelectionStrategy;
+
+    @Option(names = { "-Se",
+            "--setters-selection" }, description = "Setters selection strategy for concrete-driven DSE (default: ${DEFAULT-VALUE}, options: All, None, Usage)", defaultValue = "None", paramLabel = "<name>")
+    private SettersSelectionStrategy settersSelectionStrategy;
+
     @Override
     public Integer call() {
         try {
@@ -98,7 +108,7 @@ public class MazeCLI implements Callable<Integer> {
                     searchHeuristics, heuristicWeights, timeBudget);
 
             Long start = System.currentTimeMillis();
-            DSEController controller = new DSEController(classPath, concreteDriven, strategy, outPath,
+            DSEController controller = new DSEController(classPath, concreteDriven, strategy, constructorSelectionStrategy, settersSelectionStrategy, outPath,
                     methodName, maxDepth, testTimeout, packageName, junitVersion.isJUnit4());
             controller.run(className, timeBudget);
             Long end = System.currentTimeMillis();

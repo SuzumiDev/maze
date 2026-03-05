@@ -5,7 +5,7 @@ import sootup.java.core.JavaSootMethod;
 import java.lang.reflect.Constructor;
 
 public class BiggestConstructorSelector extends ConstructorSelector{
-    protected BiggestConstructorSelector(JavaSootMethod method, Class<?> clazz) {
+    public BiggestConstructorSelector(JavaSootMethod method, Class<?> clazz) {
         super(method, clazz);
     }
 

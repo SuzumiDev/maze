@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Set;
 
 public class UsageConstructorSelector extends ConstructorSelector {
-    protected UsageConstructorSelector(JavaSootMethod method, Class<?> clazz) {
+    public UsageConstructorSelector(JavaSootMethod method, Class<?> clazz) {
         super(method, clazz);
     }
 
@@ -19,7 +19,7 @@ public class UsageConstructorSelector extends ConstructorSelector {
         int highestRelevant = 0;
         for (Constructor<?> constructor : clazz.getConstructors()) {
             int relevant = 0;
-            for (String field : ObjectInstantiation.getSideEffects(clazz, constructor)) {
+            for (String field : ObjectInstantiation.getSideEffects(clazz, constructor)) { //todo: rn this only checks if the field was changed, edit it to also check whether the field was actually changed into the set value
                 if (usedFields.contains(field))
                     relevant++;
             }

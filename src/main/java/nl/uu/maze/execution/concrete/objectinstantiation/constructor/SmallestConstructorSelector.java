@@ -6,7 +6,7 @@ import java.lang.reflect.Constructor;
 
 public class SmallestConstructorSelector extends ConstructorSelector {
 
-    protected SmallestConstructorSelector(JavaSootMethod method, Class<?> clazz) {
+    public SmallestConstructorSelector(JavaSootMethod method, Class<?> clazz) {
         super(method, clazz);
     }
 
