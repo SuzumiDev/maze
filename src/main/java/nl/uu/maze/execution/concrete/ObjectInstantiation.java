@@ -181,9 +181,10 @@ public class ObjectInstantiation {
             for (Field f : instance.getClass().getDeclaredFields()) {
                 f.setAccessible(true);
                 if (f.get(instance) != null) {
-                    if (originalFields.get(f.getName()) == null) continue;
-                    changedFields.add(f.getName());
-                    logger.debug("field {} is a side effect of method {}", f.getName(), method.getName());
+                    if (originalFields.get(f.getName()) == null || !originalFields.get(f.getName()).equals(f.get(instance))) {
+                        changedFields.add(f.getName());
+                        logger.debug("field {} is a side effect of method {}", f.getName(), method.getName());
+                    }
                 }
             }
 

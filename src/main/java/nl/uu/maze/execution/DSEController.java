@@ -281,7 +281,7 @@ public class DSEController {
 
             SymbolicSearchStrategy strategy = searchStrategy.toSymbolic();
             initializeSymbolic(strategy);
-            runSymbolicDriven(strategy, ctorSoot);
+            runSymbolicDriven(strategy, ctorSoot, new ArrayList<>());
 
             // If any unfinished states are still in the strategy, generate test cases
             Collection<SymbolicState> states = strategy.getAll();
@@ -347,8 +347,9 @@ public class DSEController {
      *         optional otherwise
      */
     private Optional<SymbolicState> runSymbolicDriven(SymbolicSearchStrategy searchStrategy,
-            JavaSootMethod targetMethod) {
+            JavaSootMethod targetMethod, List<JavaSootMethod> setterMethods) {
         SymbolicState current;
+        int currentSetter = 0;
         while ((current = searchStrategy.next()) != null) {
             // Check if we are over the time budget
             if (System.currentTimeMillis() >= executionDeadline) {
@@ -384,6 +385,24 @@ public class DSEController {
             // Symbolically execute the statement of the current symbolic state
             List<SymbolicState> newStates = symbolic.step(current, concreteDriven);
 
+            // if setter int < setter size go to next setter
+            if (concreteDriven && !setterMethods.isEmpty()) {
+                for (SymbolicState state : newStates) {
+                    if (state.isFinalState()) {
+                        if (state.isExceptionThrown() || state.isInfeasible()) {
+                            return Optional.of(state);
+                        }
+                        currentSetter++;
+                        if (currentSetter < setterMethods.size()) {
+                            JavaSootMethod currentMethod = setterMethods.get(currentSetter);
+                            state.setMethod(currentMethod, analyzer.getCFG(currentMethod));
+                        } else {
+                            state.setMethod(targetMethod, analyzer.getCFG(targetMethod));
+                        }
+                    }
+                }
+            }
+
             // For ctor states, check for final states from which we can switch to the
             // target method(s)
             if (current.isCtorState()) {
@@ -407,7 +426,12 @@ public class DSEController {
                         // single target method being replayed right now
                         if (concreteDriven) {
                             initStates.put(TraceManager.hashCode(state.getMethodSignature()), state.clone());
-                            state.setMethod(targetMethod, analyzer.getCFG(targetMethod));
+                            if (setterMethods.isEmpty()) {
+                                state.setMethod(targetMethod, analyzer.getCFG(targetMethod));
+                            } else {
+                                state.setMethod(setterMethods.getFirst(), analyzer.getCFG(setterMethods.getFirst()));
+                            }
+
                         }
                         // For symbolic-driven, we can switch to any of the target methods
                         else {
@@ -436,7 +460,7 @@ public class DSEController {
     }
 
     /** Run symbolic-driven DSE to replay a concrete execution. */
-    public Optional<SymbolicState> runSymbolicReplay(JavaSootMethod method) {
+    public Optional<SymbolicState> runSymbolicReplay(JavaSootMethod method, List<JavaSootMethod> setterMethods) {
         SymbolicState initState;
 
         // For static methods, start at the target method
@@ -459,7 +483,7 @@ public class DSEController {
 
         replayStrategy.add(initState);
         // Run symbolic execution
-        Optional<SymbolicState> finalState = runSymbolicDriven(replayStrategy, method);
+        Optional<SymbolicState> finalState = runSymbolicDriven(replayStrategy, method, setterMethods);
         replayStrategy.reset();
         return finalState;
     }
@@ -491,7 +515,7 @@ public class DSEController {
             // Concrete execution followed by symbolic replay
             TraceManager.clearEntries();
             concrete.execute(javaMethod, argMap, instantiator);
-            Optional<SymbolicState> finalState = runSymbolicReplay(method);
+            Optional<SymbolicState> finalState = runSymbolicReplay(method, instantiator.getSelectedSetters());
             logger.debug("Replayed state: {}", finalState.isPresent() ? finalState.get() : "none");
 
             if (finalState.isPresent()) {
