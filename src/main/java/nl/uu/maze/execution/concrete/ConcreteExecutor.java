@@ -33,6 +33,19 @@ public class ConcreteExecutor {
                 return result;
             }
             instance = result.retval();
+            logger.debug("instance has {} fields", instance.getClass().getDeclaredFields().length);
+            for (Field f : instance.getClass().getDeclaredFields()) {
+                try {
+                    logger.debug("instance field {}", f.getName());
+                    f.setAccessible(true);
+                    if (f.get(instance) != null) {
+                        logger.debug("instance has {} on field {}", f.get(instance), f.getName());
+                    }
+                    f.setAccessible(false);
+                } catch (Exception e) {
+                    logger.debug("error in field get", e);
+                }
+            }
         }
         return execute(instance, method, argMap);
     }
