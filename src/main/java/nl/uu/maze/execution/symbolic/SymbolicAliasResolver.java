@@ -163,7 +163,7 @@ public class SymbolicAliasResolver {
         // Note: value in trace is the index of the aliased parameter or -1 for null
         int aliasIndex = entry.getValue();
         Expr<?> alias = aliasIndex == -1 ? sorts.getNullConst()
-                : state.heap.getSingleAlias(ArgMap.getSymbolicName(state.getMethodType(), aliasIndex));
+                : state.heap.getSingleAlias(ArgMap.getSymbolicName(state.getMethodType(), state.getMethod().getName(), aliasIndex));
         // Find the index of this alias in the aliasArr
         int i = 0;
         for (; i < aliasArr.length; i++) {

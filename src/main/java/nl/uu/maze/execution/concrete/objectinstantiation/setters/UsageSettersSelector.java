@@ -1,8 +1,11 @@
 package nl.uu.maze.execution.concrete.objectinstantiation.setters;
 
+import nl.uu.maze.analysis.JavaAnalyzer;
 import nl.uu.maze.execution.ArgMap;
 import nl.uu.maze.execution.MethodType;
 import nl.uu.maze.execution.concrete.ObjectInstantiation;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import sootup.java.core.JavaSootMethod;
 
 import java.lang.reflect.Constructor;
@@ -14,27 +17,37 @@ import java.util.Set;
 
 public class UsageSettersSelector extends SettersSelector {
 
-    public UsageSettersSelector(JavaSootMethod method, Class<?> clazz) {
-        super(method, clazz);
+    private static final Logger logger = LoggerFactory.getLogger(UsageSettersSelector.class);
+
+    public UsageSettersSelector(JavaSootMethod method, Class<?> clazz, JavaSootMethod[] methods, JavaAnalyzer analyzer) {
+        super(method, clazz, methods, analyzer);
     }
 
     @Override
-    public List<Method> selectSetters(Constructor<?> constructor) throws InvocationTargetException, InstantiationException, IllegalAccessException {
-        List<Method> methods = new ArrayList<>();
+    public List<JavaSootMethod> selectSetters(Constructor<?> constructor) throws InvocationTargetException, InstantiationException, IllegalAccessException, ClassNotFoundException, NoSuchMethodException {
+        List<JavaSootMethod> selectedSetters = new ArrayList<>();
         Set<String> usedFields = ObjectInstantiation.getAccessedVariables(method, clazz);
         ArgMap argMap = new ArgMap();
-        ObjectInstantiation.generateArgs(constructor.getParameters(), MethodType.CTOR, argMap);
-        Object instance = constructor.newInstance(argMap);
+        Object[] args = ObjectInstantiation.generateArgs(constructor.getParameters(), MethodType.CTOR, argMap, "");
+        for (var v : argMap.args.entrySet()) {
+            logger.debug("var {} with type {}", v.getKey(), v.getValue().getClass().getTypeName());
+        }
 
-        for (Method m : clazz.getDeclaredMethods()) {
+        for (JavaSootMethod method1 : methods) {
+            if (method1.equals(method)) continue;
+            Object instance = constructor.newInstance(args);
+            Method m = analyzer.getJavaMethod(method1.getSignature());
+            logger.debug("checking method {} for setter", method1.getName());
             for (String field : ObjectInstantiation.getSideEffects(instance, m)) {
+                logger.debug("side effect {}", field);
                 if (usedFields.contains(field)) {
-                    methods.add(m);
+                    logger.debug("selected setter {}", method1.getName());
+                    selectedSetters.add(method1);
                     break;
                 }
             }
         }
 
-        return methods;
+        return selectedSetters;
     }
 }

@@ -45,7 +45,7 @@ public class ArgMap {
      * array is of a more specific type, in which case the array can be converted to
      * the correct type using the {@link #toJava toJava} method.
      */
-    private final Map<String, Object> args;
+    public final Map<String, Object> args;
     /**
      * Map of objects converted to the correct Java type.
      */
@@ -99,8 +99,8 @@ public class ArgMap {
      * prefix to avoid name conflicts between different methods (e.g., constructor
      * and target method).
      */
-    public static String getSymbolicName(MethodType type, int index) {
-        return type.getPrefix() + "arg" + index;
+    public static String getSymbolicName(MethodType type, String methodName, int index) {
+        return type.getPrefix() + methodName + "arg" + index;
     }
 
     @Override
@@ -159,6 +159,7 @@ public class ArgMap {
      * @return The converted object
      */
     public Object toJava(String key, Class<?> type) {
+        logger.debug("turning to  java {} with type {}", key, args.get(key).getClass().getTypeName());
         return toJava(key, args.get(key), type);
     }
 

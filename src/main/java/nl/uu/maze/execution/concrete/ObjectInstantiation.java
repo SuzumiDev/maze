@@ -54,7 +54,7 @@ public class ObjectInstantiation {
         // Sort the constructors by the number of parameters to try the easiest first
         Arrays.sort(ctors, (a, b) -> Integer.compare(a.getParameterCount(), b.getParameterCount()));
         for (Constructor<?> ctor : ctors) {
-            Object[] args = generateArgs(ctor.getParameters(), MethodType.CTOR, null);
+            Object[] args = generateArgs(ctor.getParameters(), MethodType.CTOR, null, "");
             ExecutionResult result = createInstance(ctor, args);
             if (!result.isException()) {
                 return result;
@@ -75,7 +75,7 @@ public class ObjectInstantiation {
      *         created or the exception thrown if the instance could not be created
      */
     public static ExecutionResult createInstance(Constructor<?> ctor, ArgMap argMap) {
-        return createInstance(ctor, generateArgs(ctor.getParameters(), MethodType.CTOR, argMap));
+        return createInstance(ctor, generateArgs(ctor.getParameters(), MethodType.CTOR, argMap, ""));
     }
 
     /**
@@ -112,12 +112,13 @@ public class ObjectInstantiation {
      *                   method invocation
      * @return An array of arguments corresponding to the given parameters
      */
-    public static Object[] generateArgs(Parameter[] params, MethodType methodType, ArgMap argMap) {
+    public static Object[] generateArgs(Parameter[] params, MethodType methodType, ArgMap argMap, String methodName) {
         Object[] arguments = new Object[params.length];
         for (int i = 0; i < params.length; i++) {
             // If the parameter is known, use the known value
-            String name = ArgMap.getSymbolicName(methodType, i);
+            String name = ArgMap.getSymbolicName(methodType, methodName, i);
             if (argMap != null && argMap.containsKey(name)) {
+                logger.debug("trying to turn param type for {} {} into {}", params[i].getName(), name, params[i].getType());
                 arguments[i] = argMap.toJava(name, params[i].getType());
                 continue;
             }
@@ -140,7 +141,7 @@ public class ObjectInstantiation {
         if (clazz.getDeclaredFields().length == 0)
             return initializedFields;
 
-        Object[] args = generateArgs(ctor.getParameters(), MethodType.CTOR, null);
+        Object[] args = generateArgs(ctor.getParameters(), MethodType.CTOR, null, "");
         try {
             Object instance = ctor.newInstance(args);
             for (Field f : clazz.getDeclaredFields()) {
@@ -170,14 +171,19 @@ public class ObjectInstantiation {
                 originalFields.put(f.getName(), f.get(instance));
             }
 
-            Object[] args = generateArgs(method.getParameters(), MethodType.METHOD, null);
+            Object[] args = generateArgs(method.getParameters(), MethodType.METHOD, null, method.getName());
+            for (var v : args) {
+                logger.debug("var with type {}", v.getClass().getTypeName());
+            }
 
             method.invoke(instance, args);
 
             for (Field f : instance.getClass().getDeclaredFields()) {
                 f.setAccessible(true);
-                if (!originalFields.get(f.getName()).equals(f.get(instance))) {
+                if (f.get(instance) != null) {
+                    if (originalFields.get(f.getName()) == null) continue;
                     changedFields.add(f.getName());
+                    logger.debug("field {} is a side effect of method {}", f.getName(), method.getName());
                 }
             }
 

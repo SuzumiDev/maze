@@ -266,7 +266,7 @@ public class DSEController {
                 try {
                     strategy.reset();
                     logger.info("Processing method: {}", method.getName());
-                    runConcreteDriven(method, strategy);
+                    runConcreteDriven(method, strategy, muts);
                 } catch (Exception e) {
                     logger.error("Error processing method {}: {}", method.getName(), e.getMessage());
                     logger.debug("Error stack trace: ", e);
@@ -309,7 +309,7 @@ public class DSEController {
         try {
             Optional<ArgMap> argMap = validator.evaluate(state);
             if (argMap.isPresent()) {
-                generator.addMethodTestCase(state.getMethod(), ctorSoot, argMap.get());
+                generator.addMethodTestCase(state.getMethod(), ctorSoot, argMap.get(), null);
             }
         } catch (Exception e) {
             logger.error("Error generating test case for method {}: {}", state.getMethod().getName(), e.getMessage());
@@ -465,13 +465,13 @@ public class DSEController {
     }
 
     /** Run concrete-driven DSE on the given method. */
-    private void runConcreteDriven(JavaSootMethod method, ConcreteSearchStrategy searchStrategy) throws Exception {
+    private void runConcreteDriven(JavaSootMethod method, ConcreteSearchStrategy searchStrategy, JavaSootMethod[] muts) throws Exception {
         Method javaMethod = analyzer.getJavaMethod(method.getSignature(), instrumented);
         ArgMap argMap = new ArgMap();
         boolean deadlineReached = false;
 
         // Setup instance for this method
-        ObjectInstantiator instantiator = getObjectInstantiator(method);
+        ObjectInstantiator instantiator = getObjectInstantiator(method, muts);
         this.ctor = instantiator.getSelectedConstructor();
 
         // Get corresponding CFG
@@ -502,7 +502,7 @@ public class DSEController {
                 if (isNew) {
                     // For the first concrete execution, argMap is populated by the concrete
                     // executor
-                    generator.addMethodTestCase(method, ctorSoot, argMap);
+                    generator.addMethodTestCase(method, ctorSoot, argMap, instantiator);
                 }
             }
 
@@ -523,7 +523,7 @@ public class DSEController {
         }
     }
 
-    private ObjectInstantiator getObjectInstantiator(JavaSootMethod method) throws InvocationTargetException, InstantiationException, IllegalAccessException {
+    private ObjectInstantiator getObjectInstantiator(JavaSootMethod method, JavaSootMethod[] muts) throws InvocationTargetException, InstantiationException, IllegalAccessException, ClassNotFoundException, NoSuchMethodException {
         ConstructorSelector constructorSelector;
         SettersSelector settersSelector;
 
@@ -536,12 +536,12 @@ public class DSEController {
         }
 
         switch (settersSelectionStrategy) {
-            case Usage -> settersSelector = new UsageSettersSelector(method, clazz);
-            case All -> settersSelector = new AllSettersSelector(method, clazz);
-            case None -> settersSelector = new NoSettersSelector(method, clazz);
+            case Usage -> settersSelector = new UsageSettersSelector(method, clazz, muts, analyzer);
+            case All -> settersSelector = new AllSettersSelector(method, clazz, muts, analyzer);
+            case None -> settersSelector = new NoSettersSelector(method, clazz, muts, analyzer);
             default -> throw new IllegalArgumentException("No selected setters selection strategy!");
         }
 
-        return new ObjectInstantiator(constructorSelector, settersSelector);
+        return new ObjectInstantiator(constructorSelector, settersSelector, analyzer);
     }
 }

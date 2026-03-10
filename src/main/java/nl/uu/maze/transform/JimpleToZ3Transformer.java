@@ -503,7 +503,7 @@ public class JimpleToZ3Transformer extends AbstractValueVisitor<Expr<?>> {
     // #region Params and locals
     @Override
     public void caseParameterRef(@Nonnull JParameterRef ref) {
-        String var = ArgMap.getSymbolicName(state.getMethodType(), ref.getIndex());
+        String var = ArgMap.getSymbolicName(state.getMethodType(), state.getMethod().getName(), ref.getIndex());
         Type sootType = ref.getType();
         state.setParamType(var, sootType);
 

@@ -1,5 +1,6 @@
 package nl.uu.maze.generation;
 
+import nl.uu.maze.execution.concrete.objectinstantiation.ObjectInstantiator;
 import sootup.core.types.ArrayType;
 import sootup.core.types.ClassType;
 import sootup.core.types.Type;
@@ -107,7 +108,7 @@ public class JUnitTestGenerator {
      * @param argMap {@link ArgMap} containing the arguments to pass to the
      *               method invocation
      */
-    public void addMethodTestCase(JavaSootMethod method, JavaSootMethod ctor, ArgMap argMap) {
+    public void addMethodTestCase(JavaSootMethod method, JavaSootMethod ctor, ArgMap argMap, ObjectInstantiator objectInstantiator) {
         if (classBuilder == null) {
             throw new IllegalStateException("Test class not initialized. Call initializeForClass() first.");
         }
@@ -121,6 +122,7 @@ public class JUnitTestGenerator {
 
         ExecutionResult result;
         Object[] ctorArgs;
+        List<Object[]> setterArgs = new ArrayList<>();
         Object[] args;
         try {
             // Reset the ArgMap's converted state to ensure fresh values for the arguments
@@ -131,15 +133,23 @@ public class JUnitTestGenerator {
 
             Constructor<?> _ctor = ctor != null ? analyzer.getJavaConstructor(ctor, clazz) : null;
             ctorArgs = _ctor != null
-                    ? ObjectInstantiation.generateArgs(_ctor.getParameters(), MethodType.CTOR, argMap)
+                    ? ObjectInstantiation.generateArgs(_ctor.getParameters(), MethodType.CTOR, argMap, "")
                     : null;
             if (forCtor) {
                 result = ObjectInstantiation.createInstance(_ctor, ctorArgs);
                 args = new Object[0];
             } else {
                 Method _method = analyzer.getJavaMethod(method.getSignature(), clazz);
-                args = ObjectInstantiation.generateArgs(_method.getParameters(), MethodType.METHOD, argMap);
-                result = executor.execute(_ctor, _method, ctorArgs, args);
+                args = ObjectInstantiation.generateArgs(_method.getParameters(), MethodType.METHOD, argMap, _method.getName());
+
+                if (objectInstantiator != null) {
+                    for (JavaSootMethod method1 : objectInstantiator.getSelectedSetters()) {
+                        Method m = analyzer.getJavaMethod(method1.getSignature());
+                        setterArgs.add(ObjectInstantiation.generateArgs(m.getParameters(), MethodType.METHOD, argMap, method1.getName()));
+                    }
+                }
+
+                result = executor.execute(_ctor, _method, ctorArgs, args, setterArgs, objectInstantiator);
             }
         } catch (Exception e) {
             logger.warn("Failed to execute test case for {}", method.getName());
@@ -166,7 +176,7 @@ public class JUnitTestGenerator {
         // For static methods, just call the method without an instance
         if (method.isStatic()) {
             List<String> params = addParamDefinitions(methodBuilder, method.getParameterTypes(), argMap,
-                    MethodType.METHOD);
+                    MethodType.METHOD, method.getName());
             addMethodCall(methodBuilder, clazz, returnType, method, params, result, isVoid);
         }
         // For instance methods, create an instance of the class and call the method
@@ -177,7 +187,7 @@ public class JUnitTestGenerator {
 
             // Add variable definitions for the ctor parameters
             List<String> ctorParams = addParamDefinitions(methodBuilder, ctor.getParameterTypes(), argMap,
-                    MethodType.CTOR);
+                    MethodType.CTOR, "");
             // Assert throws for constructor call if it threw an exception
             if (result.thrownByCtor() && !targetJUnit4) {
                 // For JUnit 5, use assertThrows to check for exceptions
@@ -190,9 +200,19 @@ public class JUnitTestGenerator {
                     methodBuilder.addStatement("new $T($L)", clazz, String.join(", ", ctorParams));
                 } else {
                     methodBuilder.addStatement("$T cut = new $T($L)", clazz, clazz, String.join(", ", ctorParams));
-                    methodBuilder.addCode("\n"); // White space between ctor and method call
+                    methodBuilder.addCode("\n"); // White space between ctor and setter calls
+
+                    // add setters
+                    if (objectInstantiator != null) {
+                        for (JavaSootMethod method1 : objectInstantiator.getSelectedSetters()) {
+                            List<String> params = addParamDefinitions(methodBuilder, method1.getParameterTypes(), argMap, MethodType.METHOD, method1.getName());
+                            methodBuilder.addStatement("cut.$L($L)", method1.getName(), String.join(", ", params));
+                        }
+                        methodBuilder.addCode("\n");
+                    }
+
                     List<String> params = addParamDefinitions(methodBuilder, method.getParameterTypes(), argMap,
-                            MethodType.METHOD);
+                            MethodType.METHOD, method.getName());
                     addMethodCall(methodBuilder, clazz, returnType, method, params, result, isVoid);
                 }
             }
@@ -217,7 +237,7 @@ public class JUnitTestGenerator {
                             if (ctorArgs[i] == retval) {
                                 isReference = true;
                                 methodBuilder.addStatement("$T expected = $L", returnType,
-                                        ArgMap.getSymbolicName(MethodType.CTOR, i));
+                                        ArgMap.getSymbolicName(MethodType.CTOR, method.getName(), i));
                                 break;
                             }
                         }
@@ -227,7 +247,7 @@ public class JUnitTestGenerator {
                             isReference = true;
                             // Retval is a reference to argument i
                             methodBuilder.addStatement("$T expected = $L", returnType,
-                                    ArgMap.getSymbolicName(MethodType.METHOD, i));
+                                    ArgMap.getSymbolicName(MethodType.METHOD, method.getName(), i));
                             break;
                         }
                     }
@@ -316,10 +336,10 @@ public class JUnitTestGenerator {
     }
 
     private List<String> addParamDefinitions(MethodSpec.Builder methodBuilder, List<Type> paramTypes, ArgMap argMap,
-            MethodType methodType) {
+            MethodType methodType, String methodName) {
         List<String> params = new ArrayList<>();
         for (int i = 0; i < paramTypes.size(); i++) {
-            String var = ArgMap.getSymbolicName(methodType, i);
+            String var = ArgMap.getSymbolicName(methodType, methodName, i);
             params.add(var);
             if (builtObjects.contains(var)) {
                 continue;
@@ -490,7 +510,7 @@ public class JUnitTestGenerator {
         }
         // Make sure we use the constructor of the class we are generating the test for
         clazz = ctor.getDeclaringClass();
-        Object[] arguments = ObjectInstantiation.generateArgs(ctor.getParameters(), MethodType.CTOR, null);
+        Object[] arguments = ObjectInstantiation.generateArgs(ctor.getParameters(), MethodType.CTOR, null, "");
         String[] argNames = new String[arguments.length];
         for (int i = 0; i < arguments.length; i++) {
             Object arg = arguments[i];

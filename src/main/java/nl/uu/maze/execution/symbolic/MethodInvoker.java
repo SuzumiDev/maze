@@ -139,7 +139,7 @@ public class MethodInvoker {
         for (int i = 0; i < args.size(); i++) {
             Immediate arg = args.get(i);
             Expr<?> argExpr = jimpleToZ3.transform(arg, state);
-            String argName = ArgMap.getSymbolicName(MethodType.CALLEE, i);
+            String argName = ArgMap.getSymbolicName(MethodType.CALLEE, method.getName(), i);
             callee.assign(argName, argExpr);
             if (state.heap.isMultiArray(arg.toString())) {
                 // If the argument is a multidimensional array, copy the array indices
@@ -241,7 +241,7 @@ public class MethodInvoker {
     private void setMethodArguments(SymbolicState state, List<Immediate> args, boolean isCtor, ArgMap argMap) {
         for (int i = 0; i < args.size(); i++) {
             Immediate arg = args.get(i);
-            String name = ArgMap.getSymbolicName(isCtor ? MethodType.CTOR : MethodType.METHOD, i);
+            String name = ArgMap.getSymbolicName(isCtor ? MethodType.CTOR : MethodType.METHOD, state.getMethod().getName(), i);
 
             // Constants can be immediately defined
             if (arg instanceof Constant constant) {
