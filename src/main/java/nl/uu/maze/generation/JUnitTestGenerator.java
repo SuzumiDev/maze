@@ -237,7 +237,7 @@ public class JUnitTestGenerator {
                             if (ctorArgs[i] == retval) {
                                 isReference = true;
                                 methodBuilder.addStatement("$T expected = $L", returnType,
-                                        ArgMap.getSymbolicName(MethodType.CTOR, method.getName(), i));
+                                        ArgMap.getSymbolicName(MethodType.CTOR, "", i));
                                 break;
                             }
                         }
@@ -339,7 +339,7 @@ public class JUnitTestGenerator {
             MethodType methodType, String methodName) {
         List<String> params = new ArrayList<>();
         for (int i = 0; i < paramTypes.size(); i++) {
-            String var = ArgMap.getSymbolicName(methodType, methodName, i);
+            String var = ArgMap.getSymbolicName(methodType, methodType == MethodType.CTOR ? "" : methodName, i);
             params.add(var);
             if (builtObjects.contains(var)) {
                 continue;

@@ -116,7 +116,7 @@ public class ObjectInstantiation {
         Object[] arguments = new Object[params.length];
         for (int i = 0; i < params.length; i++) {
             // If the parameter is known, use the known value
-            String name = ArgMap.getSymbolicName(methodType, methodName, i);
+            String name = ArgMap.getSymbolicName(methodType, methodType == MethodType.CTOR ? "" : methodName, i);
             if (argMap != null && argMap.containsKey(name)) {
                 logger.debug("trying to turn param type for {} {} into {}", params[i].getName(), name, params[i].getType());
                 arguments[i] = argMap.toJava(name, params[i].getType());

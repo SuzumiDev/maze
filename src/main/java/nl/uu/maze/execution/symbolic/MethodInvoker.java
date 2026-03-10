@@ -241,7 +241,7 @@ public class MethodInvoker {
     private void setMethodArguments(SymbolicState state, List<Immediate> args, boolean isCtor, ArgMap argMap) {
         for (int i = 0; i < args.size(); i++) {
             Immediate arg = args.get(i);
-            String name = ArgMap.getSymbolicName(isCtor ? MethodType.CTOR : MethodType.METHOD, state.getMethod().getName(), i);
+            String name = ArgMap.getSymbolicName(isCtor ? MethodType.CTOR : MethodType.METHOD, isCtor ? "" : state.getMethod().getName(), i);
 
             // Constants can be immediately defined
             if (arg instanceof Constant constant) {
