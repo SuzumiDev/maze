@@ -41,10 +41,6 @@ public class ObjectInstantiator {
 
             logger.debug("creating instance with argmap {}", argMap);
 
-            for (var arg : argMap.args.entrySet()) {
-                logger.debug("arg {} is {} in argmap", arg.getKey(), arg.getValue().getClass().getTypeName());
-            }
-
             for (JavaSootMethod method : selectedSetters) {
                 Method m = analyzer.getJavaMethod(method.getSignature());
                 Object[] methodArgs = ObjectInstantiation.generateArgs(m.getParameters(), MethodType.METHOD, argMap, m.getName());

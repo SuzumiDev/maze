@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class AllSettersSelector extends SettersSelector{
+
     public AllSettersSelector(JavaSootMethod method, Class<?> clazz, JavaSootMethod[] methods, JavaAnalyzer analyzer) {
         super(method, clazz, methods, analyzer);
     }
@@ -22,13 +23,12 @@ public class AllSettersSelector extends SettersSelector{
         List<JavaSootMethod> selectedSetters = new ArrayList<>();
         ArgMap argMap = new ArgMap();
 
-        ObjectInstantiation.generateArgs(constructor.getParameters(), MethodType.CTOR, argMap, "");
+        Object[] args = ObjectInstantiation.generateArgs(constructor.getParameters(), MethodType.CTOR, argMap, "");
 
         for (JavaSootMethod method1 : methods) {
             if (method1.equals(method)) continue;
-            Object instance = constructor.newInstance(argMap);
+            Object instance = constructor.newInstance(args);
             Method m = analyzer.getJavaMethod(method1.getSignature());
-            ObjectInstantiation.generateArgs(m.getParameters(), MethodType.METHOD, argMap, m.getName());
             if (!ObjectInstantiation.getSideEffects(instance, m).isEmpty()) {
                 selectedSetters.add(method1);
             }

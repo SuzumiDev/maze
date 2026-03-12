@@ -386,7 +386,7 @@ public class DSEController {
             List<SymbolicState> newStates = symbolic.step(current, concreteDriven);
 
             // if setter int < setter size go to next setter
-            if (concreteDriven && !setterMethods.isEmpty()) {
+            if (concreteDriven && !current.isCtorState() && !setterMethods.isEmpty()) {
                 for (SymbolicState state : newStates) {
                     if (state.isFinalState()) {
                         if (state.isExceptionThrown() || state.isInfeasible()) {
@@ -503,6 +503,7 @@ public class DSEController {
         ctorCfg = analyzer.getCFG(ctorSoot);
         initStates = new HashMap<>();
         logger.info("Using constructor: {}", ctorSoot.getSignature());
+        logger.info("Setter count: {}", instantiator.getSelectedSetters().size());
 
         while (true) {
             // Check time budget

@@ -3,7 +3,7 @@ package nl.uu.devtests;
 public class IfTest {
     private int j;
     private String k;
-    private String l;
+    private int l;
 
     public IfTest(int j) {
         this.j = j;
@@ -14,7 +14,7 @@ public class IfTest {
         this.j = j;
     }
 
-    public void setL(String l) {
+    public void setL(int l) {
         this.l = l;
     }
 
@@ -23,15 +23,9 @@ public class IfTest {
         if (i > j) {
             return 1;
         }
-        if (i > 4) {
-            return 5;
+        if (i < l) {
+            return 6;
         }
-        //if (k != null) {
-        //    return 2;
-        //}
-        //if (l != null) {
-        //    return 4;
-        //}
 
         return 3;
     }

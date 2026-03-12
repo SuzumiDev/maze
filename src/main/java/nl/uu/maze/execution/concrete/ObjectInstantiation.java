@@ -118,13 +118,42 @@ public class ObjectInstantiation {
             // If the parameter is known, use the known value
             String name = ArgMap.getSymbolicName(methodType, methodType == MethodType.CTOR ? "" : methodName, i);
             if (argMap != null && argMap.containsKey(name)) {
-                logger.debug("trying to turn param type for {} {} into {}", params[i].getName(), name, params[i].getType());
                 arguments[i] = argMap.toJava(name, params[i].getType());
                 continue;
             }
 
             // Get a default value for the parameter type
             arguments[i] = getDefault(params[i].getType());
+
+            // Add new argument to argMap
+            if (argMap != null) {
+                argMap.set(name, arguments[i]);
+            }
+        }
+
+        return arguments;
+    }
+
+    public static Object[] generateRandomArgs(Parameter[] params, MethodType methodType, ArgMap argMap, String methodName, boolean canBeDefault) {
+        Object[] arguments = new Object[params.length];
+        for (int i = 0; i < params.length; i++) {
+            // If the parameter is known, use the known value
+            String name = ArgMap.getSymbolicName(methodType, methodType == MethodType.CTOR ? "" : methodName, i);
+            if (argMap != null && argMap.containsKey(name)) {
+                arguments[i] = argMap.toJava(name, params[i].getType());
+                continue;
+            }
+
+            // Get a default value for the parameter type
+            Object o = generateRandom(params[i].getType());
+
+            if (!canBeDefault) {
+                Object d = getDefault(params[i].getType());
+                if (d != null && d.equals(o))
+                    return generateRandomArgs(params, methodType, argMap, methodName, false);
+            }
+
+            arguments[i] = o;
 
             // Add new argument to argMap
             if (argMap != null) {
@@ -171,19 +200,16 @@ public class ObjectInstantiation {
                 originalFields.put(f.getName(), f.get(instance));
             }
 
-            Object[] args = generateArgs(method.getParameters(), MethodType.METHOD, null, method.getName());
-            for (var v : args) {
-                logger.debug("var with type {}", v.getClass().getTypeName());
-            }
+            Object[] args = generateRandomArgs(method.getParameters(), MethodType.METHOD, null, method.getName(), false);
 
             method.invoke(instance, args);
+
 
             for (Field f : instance.getClass().getDeclaredFields()) {
                 f.setAccessible(true);
                 if (f.get(instance) != null) {
                     if (originalFields.get(f.getName()) == null || !originalFields.get(f.getName()).equals(f.get(instance))) {
                         changedFields.add(f.getName());
-                        logger.debug("field {} is a side effect of method {}", f.getName(), method.getName());
                     }
                 }
             }
