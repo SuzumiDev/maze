@@ -149,8 +149,10 @@ public class ObjectInstantiation {
 
             if (!canBeDefault) {
                 Object d = getDefault(params[i].getType());
-                if (d != null && d.equals(o))
-                    return generateRandomArgs(params, methodType, argMap, methodName, false);
+                if (d != null && d.equals(o)) {
+                    if (params[i].getType().isPrimitive())
+                        return generateRandomArgs(params, methodType, argMap, methodName, false);
+                }
             }
 
             arguments[i] = o;
