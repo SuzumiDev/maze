@@ -4,7 +4,6 @@ import nl.uu.maze.execution.concrete.ObjectInstantiation;
 import sootup.java.core.JavaSootMethod;
 
 import java.lang.reflect.Constructor;
-import java.util.List;
 import java.util.Set;
 
 public class UsageConstructorSelector extends ConstructorSelector {

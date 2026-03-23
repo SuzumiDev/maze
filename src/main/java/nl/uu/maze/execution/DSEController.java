@@ -370,7 +370,7 @@ public class DSEController {
                 executionDeadline = System.currentTimeMillis() + remainingTime / 2;
             }
 
-            logger.debug("Current state: {}", current);
+            //logger.debug("Current state: {}", current);
             if (!current.isCtorState() && current.isFinalState() || current.getDepth() >= maxDepth) {
                 // For concrete-driven, we only care about one final state, so we can stop
                 if (concreteDriven) {
@@ -491,6 +491,7 @@ public class DSEController {
     /** Run concrete-driven DSE on the given method. */
     private void runConcreteDriven(JavaSootMethod method, ConcreteSearchStrategy searchStrategy, JavaSootMethod[] muts) throws Exception {
         Method javaMethod = analyzer.getJavaMethod(method.getSignature(), instrumented);
+        logger.debug("analyzing java method {} with arguments {}", javaMethod.getName(), javaMethod.getParameters());
         ArgMap argMap = new ArgMap();
         boolean deadlineReached = false;
 
@@ -517,7 +518,7 @@ public class DSEController {
             TraceManager.clearEntries();
             concrete.execute(javaMethod, argMap, instantiator);
             Optional<SymbolicState> finalState = runSymbolicReplay(method, instantiator.getSelectedSetters());
-            logger.debug("Replayed state: {}", finalState.isPresent() ? finalState.get() : "none");
+            //logger.debug("Replayed state: {}", finalState.isPresent() ? finalState.get() : "none");
 
             if (finalState.isPresent()) {
                 boolean isNew = searchStrategy.add(finalState.get());

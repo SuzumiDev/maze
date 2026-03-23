@@ -159,7 +159,6 @@ public class ArgMap {
      * @return The converted object
      */
     public Object toJava(String key, Class<?> type) {
-        logger.debug("turning to  java {} with type {}", key, args.get(key).getClass().getTypeName());
         return toJava(key, args.get(key), type);
     }
 
