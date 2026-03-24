@@ -23,11 +23,11 @@ public class ConcreteExecutor {
      * @return An instance of {@link ExecutionResult} containing the return value
      *         or the exception thrown by the constructor or method
      */
-    public ExecutionResult execute(Method method, ArgMap argMap, ObjectInstantiator objectInstantiator) {
+    public ExecutionResult execute(Method method, ArgMap argMap, ObjectInstantiator objectInstantiator, Class<?> instrumented) {
         // If not static, create an instance of the class
         Object instance = null;
         if (!Modifier.isStatic(method.getModifiers())) {
-            ExecutionResult result = objectInstantiator.createInstance(argMap); // todo: check if the arguments are now properly handled in the condition negation
+            ExecutionResult result = objectInstantiator.createInstance(argMap, instrumented); // todo: check if the arguments are now properly handled in the condition negation
             // If constructor throws an exception, return it
             if (result.isException()) {
                 return result;

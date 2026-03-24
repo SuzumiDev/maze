@@ -30,7 +30,7 @@ public class ObjectInstantiator {
         this.analyzer = analyzer;
     }
 
-    public ExecutionResult createInstance(ArgMap argMap) {
+    public ExecutionResult createInstance(ArgMap argMap, Class<?> instrumented) {
         if (selectedConstructor == null) throw new IllegalStateException("No constructor selected!");
         if (selectedSetters == null) throw new IllegalStateException("Setters not scanned!");
 
@@ -42,7 +42,7 @@ public class ObjectInstantiator {
             logger.debug("creating instance with argmap {}", argMap);
 
             for (JavaSootMethod method : selectedSetters) {
-                Method m = analyzer.getJavaMethod(method.getSignature());
+                Method m = analyzer.getJavaMethod(method.getSignature(), instrumented);
                 Object[] methodArgs = ObjectInstantiation.generateArgs(m.getParameters(), MethodType.METHOD, argMap, m.getName());
                 m.invoke(instance, methodArgs);
             }

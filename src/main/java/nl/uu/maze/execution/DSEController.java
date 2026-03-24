@@ -370,7 +370,7 @@ public class DSEController {
                 executionDeadline = System.currentTimeMillis() + remainingTime / 2;
             }
 
-            //logger.debug("Current state: {}", current);
+            logger.debug("Current state: {}", current);
             if (!current.isCtorState() && current.isFinalState() || current.getDepth() >= maxDepth) {
                 // For concrete-driven, we only care about one final state, so we can stop
                 if (concreteDriven) {
@@ -397,6 +397,7 @@ public class DSEController {
                             JavaSootMethod currentMethod = setterMethods.get(currentSetter);
                             state.setMethod(currentMethod, analyzer.getCFG(currentMethod));
                         } else {
+                            initStates.put(TraceManager.hashCode(state.getMethodSignature()), state.clone());
                             state.setMethod(targetMethod, analyzer.getCFG(targetMethod));
                         }
                     }
@@ -425,8 +426,8 @@ public class DSEController {
                         // For concrete-driven, store this final ctor state for reuse and switch to the
                         // single target method being replayed right now
                         if (concreteDriven) {
-                            initStates.put(TraceManager.hashCode(state.getMethodSignature()), state.clone());
                             if (setterMethods.isEmpty()) {
+                                initStates.put(TraceManager.hashCode(state.getMethodSignature()), state.clone());
                                 state.setMethod(targetMethod, analyzer.getCFG(targetMethod));
                             } else {
                                 state.setMethod(setterMethods.getFirst(), analyzer.getCFG(setterMethods.getFirst()));
@@ -516,7 +517,9 @@ public class DSEController {
 
             // Concrete execution followed by symbolic replay
             TraceManager.clearEntries();
-            concrete.execute(javaMethod, argMap, instantiator);
+            logger.info("argmap before {}", argMap);
+            concrete.execute(javaMethod, argMap, instantiator, instrumented);
+            logger.info("argmap after {}", argMap);
             Optional<SymbolicState> finalState = runSymbolicReplay(method, instantiator.getSelectedSetters());
             //logger.debug("Replayed state: {}", finalState.isPresent() ? finalState.get() : "none");
 
