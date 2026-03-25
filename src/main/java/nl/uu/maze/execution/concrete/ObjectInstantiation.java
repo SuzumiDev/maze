@@ -229,8 +229,13 @@ public class ObjectInstantiation {
 
         for (Stmt stmt : method.getBody().getStmts()) {
             if (stmt instanceof JAssignStmt jAssignStmt) {
-                // todo: fix this, probably to do with arrays
-                if (!jAssignStmt.containsFieldRef()) continue;
+                if (!jAssignStmt.containsFieldRef()) {
+                    if (jAssignStmt.containsArrayRef()) {
+                        logger.debug("Todo: an array ref has appeared {}", jAssignStmt.getArrayRef().getBase().getName());
+                        continue;
+                    }
+                    continue;
+                }
                 variables.add(jAssignStmt.getFieldRef().getFieldSignature().getName());
             }
         }

@@ -190,7 +190,11 @@ public class DSEController {
         // If class includes non-static methods, need to execute constructor first
         if (!nonStaticMuts.isEmpty()) {
             if (!concreteDriven) {
+                // replace this with own system
                 ctor = analyzer.getJavaConstructor(instrumented != null ? instrumented : clazz);
+
+                // then here add the list of setters
+
                 if (ctor == null) {
                     throw new Exception("No constructor found for class: " + clazz.getName());
                 }
@@ -386,19 +390,33 @@ public class DSEController {
             List<SymbolicState> newStates = symbolic.step(current, concreteDriven);
 
             // if setter int < setter size go to next setter
-            if (concreteDriven && !current.isCtorState() && !setterMethods.isEmpty()) {
+            if (!setterMethods.isEmpty() && !current.isCtorState()) {
                 for (SymbolicState state : newStates) {
                     if (state.isFinalState()) {
                         if (state.isExceptionThrown() || state.isInfeasible()) {
-                            return Optional.of(state);
+                            if (concreteDriven)
+                                return Optional.of(state);
+                            else
+                                generateTestCase(state);
+                            continue;
                         }
                         currentSetter++;
                         if (currentSetter < setterMethods.size()) {
                             JavaSootMethod currentMethod = setterMethods.get(currentSetter);
                             state.setMethod(currentMethod, analyzer.getCFG(currentMethod));
                         } else {
-                            initStates.put(TraceManager.hashCode(state.getMethodSignature()), state.clone());
-                            state.setMethod(targetMethod, analyzer.getCFG(targetMethod));
+                            if (concreteDriven) {
+                                initStates.put(TraceManager.hashCode(state.getMethodSignature()), state.clone());
+                                state.setMethod(targetMethod, analyzer.getCFG(targetMethod));
+                            } else {
+                                for (int i = 0; i < nonStaticMuts.size(); i++) {
+                                    JavaSootMethod target = nonStaticMuts.get(i);
+                                    // Clone state, except for the last one
+                                    SymbolicState newState = i == nonStaticMuts.size() - 1 ? state : state.clone();
+                                    newState.setMethod(target, analyzer.getCFG(target));
+                                    searchStrategy.add(newState);
+                                }
+                            }
                         }
                     }
                 }
@@ -436,13 +454,13 @@ public class DSEController {
                         }
                         // For symbolic-driven, we can switch to any of the target methods
                         else {
+                            // todo: we switch to setter methods first and then the target methods (but only if setter is non empty)
                             for (int i = 0; i < nonStaticMuts.size(); i++) {
                                 JavaSootMethod target = nonStaticMuts.get(i);
                                 // Clone state, except for the last one
                                 SymbolicState newState = i == nonStaticMuts.size() - 1 ? state : state.clone();
                                 newState.setMethod(target, analyzer.getCFG(target));
                                 searchStrategy.add(newState);
-
                             }
                             continue;
                         }
@@ -517,9 +535,7 @@ public class DSEController {
 
             // Concrete execution followed by symbolic replay
             TraceManager.clearEntries();
-            logger.info("argmap before {}", argMap);
             concrete.execute(javaMethod, argMap, instantiator, instrumented);
-            logger.info("argmap after {}", argMap);
             Optional<SymbolicState> finalState = runSymbolicReplay(method, instantiator.getSelectedSetters());
             //logger.debug("Replayed state: {}", finalState.isPresent() ? finalState.get() : "none");
 

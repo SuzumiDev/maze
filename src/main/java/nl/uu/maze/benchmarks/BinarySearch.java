@@ -7,6 +7,12 @@ package nl.uu.maze.benchmarks;
  * inside of a while loop, with multiple conditios in the loop body.
  */
 public class BinarySearch {
+    private int test;
+
+    public void setInt(int test) {
+        this.test = test;
+    }
+
     /** Returns the index of the target in the sorted array. */
     public static int binarySearch(int[] arr, int target) {
         int low = 0, high = arr.length - 1;
