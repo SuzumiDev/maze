@@ -59,8 +59,9 @@ public class DSEController {
     private final Path outPath;
     private final String methodName;
     private final SearchStrategy<?> searchStrategy;
-    private final ConstructorSelectionStrategy constructorSelectionStrategy;
-    private final SettersSelectionStrategy settersSelectionStrategy;
+    private ConstructorSelectionStrategy constructorSelectionStrategy;
+    private SettersSelectionStrategy settersSelectionStrategy;
+    private ObjectInstantiator instantiator;
     /** Search strategy used for symbolic replay of a trace (DFS). */
     private final SymbolicSearchStrategy replayStrategy;
     private final JavaAnalyzer analyzer;
@@ -191,7 +192,15 @@ public class DSEController {
         if (!nonStaticMuts.isEmpty()) {
             if (!concreteDriven) {
                 // replace this with own system
-                ctor = analyzer.getJavaConstructor(instrumented != null ? instrumented : clazz);
+                //ctor = analyzer.getJavaConstructor(instrumented != null ? instrumented : clazz);
+
+                // we could use default values for this but keeping it configurable has the possibility of breaking
+                // we default to biggest and all because it cannot result in path explosion in symbolic driven
+                constructorSelectionStrategy = ConstructorSelectionStrategy.Biggest;
+                settersSelectionStrategy = SettersSelectionStrategy.All;
+                instantiator = getObjectInstantiator(nonStaticMuts.getFirst(), nonStaticMuts.toArray(JavaSootMethod[]::new));
+
+                ctor = instantiator.getSelectedConstructor();
 
                 // then here add the list of setters
 
@@ -285,7 +294,14 @@ public class DSEController {
 
             SymbolicSearchStrategy strategy = searchStrategy.toSymbolic();
             initializeSymbolic(strategy);
-            runSymbolicDriven(strategy, ctorSoot, new ArrayList<>());
+            List<JavaSootMethod> setters;
+            if (!nonStaticMuts.isEmpty()) {
+                // since we're using all setters, it doesn't matter which method is sent
+                setters = instantiator.getSelectedSetters();
+            } else {
+                setters = new ArrayList<>();
+            }
+            runSymbolicDriven(strategy, ctorSoot, setters);
 
             // If any unfinished states are still in the strategy, generate test cases
             Collection<SymbolicState> states = strategy.getAll();
@@ -313,7 +329,7 @@ public class DSEController {
         try {
             Optional<ArgMap> argMap = validator.evaluate(state);
             if (argMap.isPresent()) {
-                generator.addMethodTestCase(state.getMethod(), ctorSoot, argMap.get(), null);
+                generator.addMethodTestCase(state.getMethod(), ctorSoot, argMap.get(), instantiator);
             }
         } catch (Exception e) {
             logger.error("Error generating test case for method {}: {}", state.getMethod().getName(), e.getMessage());
@@ -454,13 +470,17 @@ public class DSEController {
                         }
                         // For symbolic-driven, we can switch to any of the target methods
                         else {
-                            // todo: we switch to setter methods first and then the target methods (but only if setter is non empty)
-                            for (int i = 0; i < nonStaticMuts.size(); i++) {
-                                JavaSootMethod target = nonStaticMuts.get(i);
-                                // Clone state, except for the last one
-                                SymbolicState newState = i == nonStaticMuts.size() - 1 ? state : state.clone();
-                                newState.setMethod(target, analyzer.getCFG(target));
-                                searchStrategy.add(newState);
+                            if (setterMethods.isEmpty()) {
+                                for (int i = 0; i < nonStaticMuts.size(); i++) {
+                                    JavaSootMethod target = nonStaticMuts.get(i);
+                                    // Clone state, except for the last one
+                                    SymbolicState newState = i == nonStaticMuts.size() - 1 ? state : state.clone();
+                                    newState.setMethod(target, analyzer.getCFG(target));
+                                    searchStrategy.add(newState);
+                                }
+                            } else {
+                                state.setMethod(setterMethods.getFirst(), analyzer.getCFG(setterMethods.getFirst()));
+                                searchStrategy.add(state);
                             }
                             continue;
                         }
@@ -569,9 +589,14 @@ public class DSEController {
     }
 
     private ObjectInstantiator getObjectInstantiator(JavaSootMethod method, JavaSootMethod[] muts) throws InvocationTargetException, InstantiationException, IllegalAccessException, ClassNotFoundException, NoSuchMethodException {
-        ConstructorSelector constructorSelector;
-        SettersSelector settersSelector;
+        ConstructorSelector constructorSelector = getConstructorSelector(method);
+        SettersSelector settersSelector = getSettersSelector(method, muts);
 
+        return new ObjectInstantiator(constructorSelector, settersSelector, analyzer);
+    }
+
+    private ConstructorSelector getConstructorSelector(JavaSootMethod method) {
+        ConstructorSelector constructorSelector;
         switch (constructorSelectionStrategy) {
             case Usage -> constructorSelector = new UsageConstructorSelector(method, clazz);
             case Random -> constructorSelector = new RandomConstructorSelector(method, clazz);
@@ -579,14 +604,17 @@ public class DSEController {
             case Smallest -> constructorSelector = new SmallestConstructorSelector(method, clazz);
             default -> throw new IllegalArgumentException("No selected constructor selection strategy!");
         }
+        return constructorSelector;
+    }
 
+    private SettersSelector getSettersSelector(JavaSootMethod method, JavaSootMethod[] muts) {
+        SettersSelector settersSelector;
         switch (settersSelectionStrategy) {
             case Usage -> settersSelector = new UsageSettersSelector(method, clazz, muts, analyzer);
             case All -> settersSelector = new AllSettersSelector(method, clazz, muts, analyzer);
             case None -> settersSelector = new NoSettersSelector(method, clazz, muts, analyzer);
             default -> throw new IllegalArgumentException("No selected setters selection strategy!");
         }
-
-        return new ObjectInstantiator(constructorSelector, settersSelector, analyzer);
+        return settersSelector;
     }
 }
