@@ -34,6 +34,12 @@ public class UsageConstructorSelector extends ConstructorSelector {
                 highestRelevant = relevant;
             }
 
+            else if (relevant == highestRelevant) {
+                if (selected.getParameterCount() > constructor.getParameterCount()) {
+                    selected = constructor;
+                }
+            }
+
 
         }
         return selected;
