@@ -8,6 +8,7 @@ import nl.uu.maze.execution.concrete.objectinstantiation.constructor.UsageConstr
 import nl.uu.maze.execution.concrete.objectinstantiation.setters.AllSettersSelector;
 import nl.uu.maze.execution.concrete.objectinstantiation.setters.NoSettersSelector;
 import nl.uu.maze.execution.concrete.objectinstantiation.setters.SettersSelector;
+import nl.uu.maze.execution.concrete.objectinstantiation.setters.UsageSettersSelector;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import sootup.core.inputlocation.AnalysisInputLocation;
@@ -118,7 +119,11 @@ public class ObjectInstantiatorTest {
 
     @BeforeAll
     public static void prepare() throws MalformedURLException {
-        JavaAnalyzer.initialize(Paths.get("target/test-classes").toString(), TesterClass.class.getClassLoader());
+        try {
+            JavaAnalyzer.initialize(Paths.get("target/test-classes").toString(), TesterClass.class.getClassLoader());
+        } catch (Exception ignored) {
+            JavaAnalyzer.reinitialize(Paths.get("target/test-classes").toString(), TesterClass.class.getClassLoader());
+        }
     }
 
     @Test
@@ -148,14 +153,11 @@ public class ObjectInstantiatorTest {
         JavaSootClass javaSootClass = getDummyClass();
         JavaSootMethod testIj = javaSootClass.getMethodsByName("testIj").stream().findFirst().orElseThrow();
         Constructor<?> ij = Arrays.stream(getSortedConstructors()).filter((c) -> c.getParameterCount() == 3).findFirst().orElseThrow(); // needs to be 3 for inner classes
-        for (var c : getSortedConstructors()) {
-            System.out.println(c.getParameterCount() + "");
-        }
         ConstructorSelector selector = new UsageConstructorSelector(testIj, TesterClass.class);
 
         Constructor<?> selected = selector.selectConstructor();
 
-        assertEquals(ij, selected); //todo: might be selecting the last one
+        assertEquals(ij, selected);
     }
 
     @Test
@@ -173,13 +175,27 @@ public class ObjectInstantiatorTest {
         JavaSootClass javaSootClass = getDummyClass();
         SettersSelector settersSelector = new AllSettersSelector(getDefaultMethod(javaSootClass), TesterClass.class, javaSootClass.getMethods().toArray(JavaSootMethod[]::new), JavaAnalyzer.getInstance());
 
-        List<JavaSootMethod> selected = settersSelector.selectSetters(getDefaultConstructor()); //nosuchmethod
+        List<JavaSootMethod> selected = settersSelector.selectSetters(getDefaultConstructor());
 
         assertEquals(2, selected.size());
         Set<JavaSootMethod> testSet = new HashSet<>();
         for (JavaSootMethod method : selected) {
             assertTrue(testSet.add(method));
         }
+
+    }
+
+    @Test
+    public void testUsageSetter() throws ClassNotFoundException, InvocationTargetException, InstantiationException, IllegalAccessException, NoSuchMethodException {
+        JavaSootClass javaSootClass = getDummyClass();
+        JavaSootMethod method = javaSootClass.getMethods().stream().filter((m) -> m.getName().equals("testJa")).findFirst().orElseThrow();
+        JavaSootMethod setter = javaSootClass.getMethods().stream().filter((m) -> m.getName().equals("setA")).findFirst().orElseThrow();
+        JavaSootMethod[] setters = { setter };
+        SettersSelector settersSelector = new UsageSettersSelector(method, TesterClass.class, javaSootClass.getMethods().toArray(JavaSootMethod[]::new), JavaAnalyzer.getInstance());
+
+        List<JavaSootMethod> selected = settersSelector.selectSetters(getDefaultConstructor());
+
+        assertArrayEquals(setters, selected.toArray(JavaSootMethod[]::new));
 
     }
 

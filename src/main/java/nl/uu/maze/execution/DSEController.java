@@ -542,8 +542,8 @@ public class DSEController {
         ctorSoot = analyzer.getSootConstructor(sootClass.getMethods(), ctor);
         ctorCfg = analyzer.getCFG(ctorSoot);
         initStates = new HashMap<>();
-        logger.info("Using constructor: {}", ctorSoot.getSignature());
-        logger.info("Setter count: {}", instantiator.getSelectedSetters().size());
+        logger.debug("Using constructor: {}", ctorSoot.getSignature());
+        logger.debug("Setter count: {}", instantiator.getSelectedSetters().size());
 
         while (true) {
             // Check time budget

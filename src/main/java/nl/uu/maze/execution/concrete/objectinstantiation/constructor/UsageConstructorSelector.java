@@ -19,8 +19,9 @@ public class UsageConstructorSelector extends ConstructorSelector {
         for (Constructor<?> constructor : clazz.getConstructors()) {
             int relevant = 0;
             for (String field : ObjectInstantiation.getSideEffects(clazz, constructor)) { //todo: rn this only checks if the field was changed, edit it to also check whether the field was actually changed into the set value
-                if (usedFields.contains(field))
+                if (usedFields.contains(field)) {
                     relevant++;
+                }
             }
 
             if (selected == null) {
@@ -32,9 +33,10 @@ public class UsageConstructorSelector extends ConstructorSelector {
             if (relevant > highestRelevant) {
                 selected = constructor;
                 highestRelevant = relevant;
+                continue;
             }
 
-            else if (relevant == highestRelevant) {
+            if (relevant == highestRelevant) {
                 if (selected.getParameterCount() > constructor.getParameterCount()) {
                     selected = constructor;
                 }

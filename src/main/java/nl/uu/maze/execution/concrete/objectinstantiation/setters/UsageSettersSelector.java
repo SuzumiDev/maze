@@ -29,23 +29,19 @@ public class UsageSettersSelector extends SettersSelector {
         Set<String> usedFields = ObjectInstantiation.getAccessedVariables(method, clazz);
         ArgMap argMap = new ArgMap();
         Object[] args = ObjectInstantiation.generateArgs(constructor.getParameters(), MethodType.CTOR, argMap, "");
-        for (var v : argMap.args.entrySet()) {
-            logger.debug("var {} with type {}", v.getKey(), v.getValue().getClass().getTypeName());
-        }
 
         for (JavaSootMethod method1 : methods) {
             if (method1.equals(method)) continue;
             Object instance = constructor.newInstance(args);
-            Method m = analyzer.getJavaMethod(method1.getSignature());
-            logger.debug("checking method {} for setter", method1.getName());
-            for (String field : ObjectInstantiation.getSideEffects(instance, m)) {
-                logger.debug("side effect {}", field);
-                if (usedFields.contains(field)) {
-                    logger.debug("selected setter {}", method1.getName());
-                    selectedSetters.add(method1);
-                    break;
+            try {
+                Method m = analyzer.getJavaMethod(method1.getSignature());
+                for (String field : ObjectInstantiation.getSideEffects(instance, m)) {
+                    if (usedFields.contains(field)) {
+                        selectedSetters.add(method1);
+                        break;
+                    }
                 }
-            }
+            } catch (NoSuchMethodException ignored) {}
         }
 
         return selectedSetters;

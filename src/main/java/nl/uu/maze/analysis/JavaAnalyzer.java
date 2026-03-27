@@ -57,6 +57,19 @@ public class JavaAnalyzer {
                 "JavaAnalyzer already initialized. Use getInstance() to access the existing instance.");
     }
 
+
+    /**
+     * Reinitializes the JavaAnalyzer with the given class path and class loader
+     * Only to be used in unit testing
+     *
+     * @return the initialized JavaAnalyzer instance
+     * @throws MalformedURLException
+     */
+    public static JavaAnalyzer reinitialize(String classPath, ClassLoader classLoader) throws MalformedURLException {
+        instance = new JavaAnalyzer(classPath, classLoader);
+        return instance;
+    }
+
     /**
      * Returns the singleton instance of the JavaAnalyzer.
      */

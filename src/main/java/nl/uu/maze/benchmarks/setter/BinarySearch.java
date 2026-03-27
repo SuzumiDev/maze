@@ -8,10 +8,15 @@ package nl.uu.maze.benchmarks.setter;
  */
 public class BinarySearch {
     private int target;
+    private int test;
     //private int[] arr;
 
-    public void setTarget(int target) {
+    public BinarySearch(int target) {
         this.target = target;
+    }
+
+    public void setTarget(int test) {
+        this.test = test;
     }
 
     /** Returns the index of the target in the sorted array. */

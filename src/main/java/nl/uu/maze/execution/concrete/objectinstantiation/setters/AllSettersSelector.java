@@ -28,10 +28,13 @@ public class AllSettersSelector extends SettersSelector{
         for (JavaSootMethod method1 : methods) {
             if (method1.equals(method)) continue;
             Object instance = constructor.newInstance(args);
-            Method m = analyzer.getJavaMethod(method1.getSignature());
-            if (!ObjectInstantiation.getSideEffects(instance, m).isEmpty()) {
-                selectedSetters.add(method1);
-            }
+            try {
+                Method m = analyzer.getJavaMethod(method1.getSignature());
+                if (!ObjectInstantiation.getSideEffects(instance, m).isEmpty()) {
+                    selectedSetters.add(method1);
+                }
+            } catch (NoSuchMethodException ignored) {} // SootUp does not have a getDeclaredMethods functionality, so if the method cannot be found it usually means it's not declared
+
         }
 
         return selectedSetters;

@@ -172,12 +172,12 @@ public class ObjectInstantiation {
         if (clazz.getDeclaredFields().length == 0)
             return initializedFields;
 
-        Object[] args = generateArgs(ctor.getParameters(), MethodType.CTOR, null, "");
+        Object[] args = generateRandomArgs(ctor.getParameters(), MethodType.CTOR, null, "", false);
         try {
             Object instance = ctor.newInstance(args);
             for (Field f : clazz.getDeclaredFields()) {
                 f.setAccessible(true);
-                if (f.get(instance) != null) {
+                if (f.get(instance) != null && !f.get(instance).equals(getDefault(f.getType()))) {
                     initializedFields.add(f.getName());
                 }
             }
@@ -209,7 +209,7 @@ public class ObjectInstantiation {
 
             for (Field f : instance.getClass().getDeclaredFields()) {
                 f.setAccessible(true);
-                if (f.get(instance) != null) {
+                if (f.get(instance) != null) { // todo: fix for objects I guess
                     if (originalFields.get(f.getName()) == null || !originalFields.get(f.getName()).equals(f.get(instance))) {
                         changedFields.add(f.getName());
                     }
