@@ -7,16 +7,24 @@ package nl.uu.maze.benchmarks.setter;
  * inside of a while loop, with multiple conditios in the loop body.
  */
 public class BinarySearch {
-    private int target;
-    private int test;
+    private int target = 0;
+    private int[] test = new int[5];
     //private int[] arr;
 
-    public BinarySearch(int target) {
+    //public BinarySearch(int target) {
+    //    this.target = target;
+    //}
+
+    public void setTarget(int target) {
         this.target = target;
+        int test1 = target;
+        if (test1 > 0) {
+            this.target += 1;
+        }
     }
 
-    public void setTarget(int test) {
-        this.test = test;
+    public void setTest(int test) {
+        this.test[0] = test;
     }
 
     /** Returns the index of the target in the sorted array. */

@@ -9,6 +9,8 @@ import org.slf4j.LoggerFactory;
 import nl.uu.maze.analysis.JavaAnalyzer;
 import nl.uu.maze.execution.ArgMap;
 import nl.uu.maze.execution.MethodType;
+import sootup.core.jimple.common.ref.JArrayRef;
+import sootup.core.jimple.common.ref.JInstanceFieldRef;
 import sootup.core.jimple.common.stmt.JAssignStmt;
 import sootup.core.jimple.common.stmt.JIfStmt;
 import sootup.core.jimple.common.stmt.Stmt;
@@ -189,39 +191,17 @@ public class ObjectInstantiation {
         return initializedFields;
     }
 
-    public static List<String> getSideEffects(Object instance, Method method) {
-        List<String> changedFields = new ArrayList<>();
-        Map<String, Object> originalFields = new HashMap<>();
+    public static Set<String> getSideEffects(JavaSootMethod method) {
+        Set<String> variables = new HashSet<>();
 
-        if (instance.getClass().getDeclaredFields().length == 0)
-            return changedFields;
-
-        try {
-            for (Field f : instance.getClass().getDeclaredFields()) {
-                f.setAccessible(true);
-                originalFields.put(f.getName(), f.get(instance));
-            }
-
-            Object[] args = generateRandomArgs(method.getParameters(), MethodType.METHOD, null, method.getName(), false);
-
-            method.invoke(instance, args);
-
-
-            for (Field f : instance.getClass().getDeclaredFields()) {
-                f.setAccessible(true);
-                if (f.get(instance) != null) { // todo: fix for objects I guess
-                    if (originalFields.get(f.getName()) == null || !originalFields.get(f.getName()).equals(f.get(instance))) {
-                        changedFields.add(f.getName());
-                    }
+        for (Stmt stmt : method.getBody().getStmts()) {
+            if (stmt instanceof JAssignStmt jAssignStmt) {
+                if (jAssignStmt.getLeftOp() instanceof JInstanceFieldRef jInstanceFieldRef) {
+                    variables.add(jInstanceFieldRef.getFieldSignature().getName());
                 }
             }
-
-        } catch (Exception e) {
-            logger.info("Method {} for class {} threw an exception when analyzing its side effects", method, instance.getClass());
-            logger.info(e.getMessage());
         }
-
-        return changedFields;
+        return variables;
     }
 
     public static Set<String> getAccessedVariables(JavaSootMethod method, Class<?> clazz) {
@@ -244,6 +224,8 @@ public class ObjectInstantiation {
 
         return variables;
     }
+    
+
 
     private static Object getDefault(Class<?> type) {
         // Create empty array

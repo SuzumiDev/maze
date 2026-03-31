@@ -92,6 +92,7 @@ public class ObjectInstantiatorTest {
             }
             return 2;
         }
+
     }
 
     public JavaSootClass getDummyClass() {

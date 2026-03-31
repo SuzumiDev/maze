@@ -6,6 +6,8 @@ import nl.uu.maze.execution.MethodType;
 import nl.uu.maze.execution.concrete.ObjectInstantiation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import sootup.core.jimple.common.stmt.JAssignStmt;
+import sootup.java.core.JavaSootClass;
 import sootup.java.core.JavaSootMethod;
 
 import java.lang.reflect.Constructor;
@@ -24,24 +26,21 @@ public class UsageSettersSelector extends SettersSelector {
     }
 
     @Override
-    public List<JavaSootMethod> selectSetters(Constructor<?> constructor) throws InvocationTargetException, InstantiationException, IllegalAccessException, ClassNotFoundException, NoSuchMethodException {
+    public List<JavaSootMethod> selectSetters(Constructor<?> constructor) {
         List<JavaSootMethod> selectedSetters = new ArrayList<>();
         Set<String> usedFields = ObjectInstantiation.getAccessedVariables(method, clazz);
-        ArgMap argMap = new ArgMap();
-        Object[] args = ObjectInstantiation.generateArgs(constructor.getParameters(), MethodType.CTOR, argMap, "");
 
         for (JavaSootMethod method1 : methods) {
             if (method1.equals(method)) continue;
-            Object instance = constructor.newInstance(args);
-            try {
-                Method m = analyzer.getJavaMethod(method1.getSignature());
-                for (String field : ObjectInstantiation.getSideEffects(instance, m)) {
-                    if (usedFields.contains(field)) {
-                        selectedSetters.add(method1);
-                        break;
-                    }
+            if (method1.getName().contains("<init>")) continue;
+
+            Set<String> alteredFields = ObjectInstantiation.getSideEffects(method1);
+            for (String field : alteredFields) {
+                if (usedFields.contains(field)) {
+                    selectedSetters.add(method1);
+                    break;
                 }
-            } catch (NoSuchMethodException ignored) {}
+            }
         }
 
         return selectedSetters;

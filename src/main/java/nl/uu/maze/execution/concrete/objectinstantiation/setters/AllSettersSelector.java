@@ -19,22 +19,15 @@ public class AllSettersSelector extends SettersSelector{
     }
 
     @Override
-    public List<JavaSootMethod> selectSetters(Constructor<?> constructor) throws InvocationTargetException, InstantiationException, IllegalAccessException, ClassNotFoundException, NoSuchMethodException {
+    public List<JavaSootMethod> selectSetters(Constructor<?> constructor) {
         List<JavaSootMethod> selectedSetters = new ArrayList<>();
-        ArgMap argMap = new ArgMap();
-
-        Object[] args = ObjectInstantiation.generateArgs(constructor.getParameters(), MethodType.CTOR, argMap, "");
 
         for (JavaSootMethod method1 : methods) {
             if (method1.equals(method)) continue;
-            Object instance = constructor.newInstance(args);
-            try {
-                Method m = analyzer.getJavaMethod(method1.getSignature());
-                if (!ObjectInstantiation.getSideEffects(instance, m).isEmpty()) {
-                    selectedSetters.add(method1);
-                }
-            } catch (NoSuchMethodException ignored) {} // SootUp does not have a getDeclaredMethods functionality, so if the method cannot be found it usually means it's not declared
-
+            if (method1.getName().contains("<init>")) continue;
+            if (!ObjectInstantiation.getSideEffects(method1).isEmpty()) {
+                selectedSetters.add(method1);
+            }
         }
 
         return selectedSetters;
