@@ -112,6 +112,10 @@ public class ObjectInstantiatorTest {
         return javaSootClass.getMethods().stream().findFirst().orElseThrow();
     }
 
+    public JavaSootMethod getNonSetterMethod(JavaSootClass javaSootClass) {
+        return javaSootClass.getMethodsByName("testI").stream().findFirst().orElseThrow();
+    }
+
     public Constructor<?>[] getSortedConstructors() {
         Constructor<?>[] ctors = TesterClass.class.getDeclaredConstructors();
         Arrays.sort(ctors, Comparator.comparingInt(Constructor::getParameterCount));
@@ -154,7 +158,7 @@ public class ObjectInstantiatorTest {
         JavaSootClass javaSootClass = getDummyClass();
         JavaSootMethod testIj = javaSootClass.getMethodsByName("testIj").stream().findFirst().orElseThrow();
         Constructor<?> ij = Arrays.stream(getSortedConstructors()).filter((c) -> c.getParameterCount() == 3).findFirst().orElseThrow(); // needs to be 3 for inner classes
-        ConstructorSelector selector = new UsageConstructorSelector(testIj, TesterClass.class);
+        ConstructorSelector selector = new UsageConstructorSelector(testIj, TesterClass.class, javaSootClass.getMethods().toArray(JavaSootMethod[]::new));
 
         Constructor<?> selected = selector.selectConstructor();
 
@@ -164,7 +168,7 @@ public class ObjectInstantiatorTest {
     @Test
     public void testNoSetter() throws ClassNotFoundException, InvocationTargetException, InstantiationException, IllegalAccessException, NoSuchMethodException {
         JavaSootClass javaSootClass = getDummyClass();
-        SettersSelector settersSelector = new NoSettersSelector(getDefaultMethod(javaSootClass), TesterClass.class, javaSootClass.getMethods().toArray(JavaSootMethod[]::new), JavaAnalyzer.getInstance());
+        SettersSelector settersSelector = new NoSettersSelector(getNonSetterMethod(javaSootClass), TesterClass.class, javaSootClass.getMethods().toArray(JavaSootMethod[]::new), JavaAnalyzer.getInstance());
 
         List<JavaSootMethod> selected = settersSelector.selectSetters(getDefaultConstructor());
 
@@ -174,7 +178,7 @@ public class ObjectInstantiatorTest {
     @Test
     public void testAllSetters() throws ClassNotFoundException, InvocationTargetException, InstantiationException, IllegalAccessException, NoSuchMethodException {
         JavaSootClass javaSootClass = getDummyClass();
-        SettersSelector settersSelector = new AllSettersSelector(getDefaultMethod(javaSootClass), TesterClass.class, javaSootClass.getMethods().toArray(JavaSootMethod[]::new), JavaAnalyzer.getInstance());
+        SettersSelector settersSelector = new AllSettersSelector(getNonSetterMethod(javaSootClass), TesterClass.class, javaSootClass.getMethods().toArray(JavaSootMethod[]::new), JavaAnalyzer.getInstance());
 
         List<JavaSootMethod> selected = settersSelector.selectSetters(getDefaultConstructor());
 

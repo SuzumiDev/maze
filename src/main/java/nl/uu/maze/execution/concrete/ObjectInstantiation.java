@@ -168,29 +168,6 @@ public class ObjectInstantiation {
         return arguments;
     }
 
-    public static List<String> getSideEffects(Class<?> clazz, Constructor<?> ctor) {
-        List<String> initializedFields = new ArrayList<>();
-
-        if (clazz.getDeclaredFields().length == 0)
-            return initializedFields;
-
-        Object[] args = generateRandomArgs(ctor.getParameters(), MethodType.CTOR, null, "", false);
-        try {
-            Object instance = ctor.newInstance(args);
-            for (Field f : clazz.getDeclaredFields()) {
-                f.setAccessible(true);
-                if (f.get(instance) != null && !f.get(instance).equals(getDefault(f.getType()))) {
-                    initializedFields.add(f.getName());
-                }
-            }
-        } catch (Exception e) {
-            logger.info("Constructor {} for class {} threw an exception when analyzing its side effects", ctor, clazz);
-            logger.info(e.getMessage());
-        }
-
-        return initializedFields;
-    }
-
     public static Set<String> getSideEffects(JavaSootMethod method) {
         Set<String> variables = new HashSet<>();
 

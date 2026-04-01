@@ -589,16 +589,16 @@ public class DSEController {
     }
 
     private ObjectInstantiator getObjectInstantiator(JavaSootMethod method, JavaSootMethod[] muts) throws InvocationTargetException, InstantiationException, IllegalAccessException, ClassNotFoundException, NoSuchMethodException {
-        ConstructorSelector constructorSelector = getConstructorSelector(method);
+        ConstructorSelector constructorSelector = getConstructorSelector(method, muts);
         SettersSelector settersSelector = getSettersSelector(method, muts);
 
         return new ObjectInstantiator(constructorSelector, settersSelector, analyzer);
     }
 
-    private ConstructorSelector getConstructorSelector(JavaSootMethod method) {
+    private ConstructorSelector getConstructorSelector(JavaSootMethod method, JavaSootMethod[] muts) {
         ConstructorSelector constructorSelector;
         switch (constructorSelectionStrategy) {
-            case Usage -> constructorSelector = new UsageConstructorSelector(method, clazz);
+            case Usage -> constructorSelector = new UsageConstructorSelector(method, clazz, muts);
             case Random -> constructorSelector = new RandomConstructorSelector(method, clazz);
             case Biggest -> constructorSelector = new BiggestConstructorSelector(method, clazz);
             case Smallest -> constructorSelector = new SmallestConstructorSelector(method, clazz);
