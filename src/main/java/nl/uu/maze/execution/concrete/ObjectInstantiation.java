@@ -1,10 +1,7 @@
 package nl.uu.maze.execution.concrete;
 
-import java.lang.reflect.Array;
-import java.lang.reflect.Constructor;
-import java.util.Arrays;
-import java.util.Random;
-import java.lang.reflect.Parameter;
+import java.lang.reflect.*;
+import java.util.*;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,6 +9,13 @@ import org.slf4j.LoggerFactory;
 import nl.uu.maze.analysis.JavaAnalyzer;
 import nl.uu.maze.execution.ArgMap;
 import nl.uu.maze.execution.MethodType;
+import sootup.core.jimple.common.ref.JArrayRef;
+import sootup.core.jimple.common.ref.JInstanceFieldRef;
+import sootup.core.jimple.common.stmt.JAssignStmt;
+import sootup.core.jimple.common.stmt.JIfStmt;
+import sootup.core.jimple.common.stmt.Stmt;
+import sootup.core.jimple.javabytecode.stmt.JSwitchStmt;
+import sootup.java.core.JavaSootMethod;
 
 /**
  * Instantiates objects using Java reflection and randomly generated
@@ -52,7 +56,7 @@ public class ObjectInstantiation {
         // Sort the constructors by the number of parameters to try the easiest first
         Arrays.sort(ctors, (a, b) -> Integer.compare(a.getParameterCount(), b.getParameterCount()));
         for (Constructor<?> ctor : ctors) {
-            Object[] args = generateArgs(ctor.getParameters(), MethodType.CTOR, null);
+            Object[] args = generateArgs(ctor.getParameters(), MethodType.CTOR, null, "");
             ExecutionResult result = createInstance(ctor, args);
             if (!result.isException()) {
                 return result;
@@ -73,7 +77,7 @@ public class ObjectInstantiation {
      *         created or the exception thrown if the instance could not be created
      */
     public static ExecutionResult createInstance(Constructor<?> ctor, ArgMap argMap) {
-        return createInstance(ctor, generateArgs(ctor.getParameters(), MethodType.CTOR, argMap));
+        return createInstance(ctor, generateArgs(ctor.getParameters(), MethodType.CTOR, argMap, ""));
     }
 
     /**
@@ -110,11 +114,11 @@ public class ObjectInstantiation {
      *                   method invocation
      * @return An array of arguments corresponding to the given parameters
      */
-    public static Object[] generateArgs(Parameter[] params, MethodType methodType, ArgMap argMap) {
+    public static Object[] generateArgs(Parameter[] params, MethodType methodType, ArgMap argMap, String methodName) {
         Object[] arguments = new Object[params.length];
         for (int i = 0; i < params.length; i++) {
             // If the parameter is known, use the known value
-            String name = ArgMap.getSymbolicName(methodType, i);
+            String name = ArgMap.getSymbolicName(methodType, methodType == MethodType.CTOR ? "" : methodName, i);
             if (argMap != null && argMap.containsKey(name)) {
                 arguments[i] = argMap.toJava(name, params[i].getType());
                 continue;
@@ -131,6 +135,74 @@ public class ObjectInstantiation {
 
         return arguments;
     }
+
+    public static Object[] generateRandomArgs(Parameter[] params, MethodType methodType, ArgMap argMap, String methodName, boolean canBeDefault) {
+        Object[] arguments = new Object[params.length];
+        for (int i = 0; i < params.length; i++) {
+            // If the parameter is known, use the known value
+            String name = ArgMap.getSymbolicName(methodType, methodType == MethodType.CTOR ? "" : methodName, i);
+            if (argMap != null && argMap.containsKey(name)) {
+                arguments[i] = argMap.toJava(name, params[i].getType());
+                continue;
+            }
+
+            // Get a default value for the parameter type
+            Object o = generateRandom(params[i].getType());
+
+            if (!canBeDefault) {
+                Object d = getDefault(params[i].getType());
+                if (d != null && d.equals(o)) {
+                    if (params[i].getType().isPrimitive())
+                        return generateRandomArgs(params, methodType, argMap, methodName, false);
+                }
+            }
+
+            arguments[i] = o;
+
+            // Add new argument to argMap
+            if (argMap != null) {
+                argMap.set(name, arguments[i]);
+            }
+        }
+
+        return arguments;
+    }
+
+    public static Set<String> getSideEffects(JavaSootMethod method) {
+        Set<String> variables = new HashSet<>();
+
+        for (Stmt stmt : method.getBody().getStmts()) {
+            if (stmt instanceof JAssignStmt jAssignStmt) {
+                if (jAssignStmt.getLeftOp() instanceof JInstanceFieldRef jInstanceFieldRef) {
+                    variables.add(jInstanceFieldRef.getFieldSignature().getName());
+                }
+            }
+        }
+        return variables;
+    }
+
+    public static Set<String> getAccessedVariables(JavaSootMethod method, Class<?> clazz) {
+        Set<String> variables = new HashSet<>();
+
+        for (Stmt stmt : method.getBody().getStmts()) {
+            if (stmt instanceof JAssignStmt jAssignStmt) {
+                if (!jAssignStmt.containsFieldRef()) {
+                    if (jAssignStmt.containsArrayRef()) {
+                        logger.debug("Todo: an array ref has appeared {}", jAssignStmt.getArrayRef().getBase().getName());
+                        continue;
+                    }
+                    continue;
+                }
+                variables.add(jAssignStmt.getFieldRef().getFieldSignature().getName());
+            }
+        }
+
+        logger.debug("accessed variables from method {} are {}", method.getName(), variables);
+
+        return variables;
+    }
+    
+
 
     private static Object getDefault(Class<?> type) {
         // Create empty array

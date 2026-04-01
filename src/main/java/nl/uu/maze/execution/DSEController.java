@@ -2,6 +2,7 @@ package nl.uu.maze.execution;
 
 import java.io.File;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -17,6 +18,14 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+import nl.uu.maze.execution.concrete.ObjectInstantiation;
+import nl.uu.maze.execution.concrete.objectinstantiation.ObjectInstantiator;
+import nl.uu.maze.execution.concrete.objectinstantiation.ObjectInstantiator.*;
+import nl.uu.maze.execution.concrete.objectinstantiation.constructor.*;
+import nl.uu.maze.execution.concrete.objectinstantiation.setters.AllSettersSelector;
+import nl.uu.maze.execution.concrete.objectinstantiation.setters.NoSettersSelector;
+import nl.uu.maze.execution.concrete.objectinstantiation.setters.SettersSelector;
+import nl.uu.maze.execution.concrete.objectinstantiation.setters.UsageSettersSelector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,6 +61,9 @@ public class DSEController {
     private final String methodName;
     private final FuzzingStrategy fuzzingStrategy;
     private final SearchStrategy<?> searchStrategy;
+    private ConstructorSelectionStrategy constructorSelectionStrategy;
+    private SettersSelectionStrategy settersSelectionStrategy;
+    private ObjectInstantiator instantiator;
     /** Search strategy used for symbolic replay of a trace (DFS). */
     private final SymbolicSearchStrategy replayStrategy;
     private final JavaAnalyzer analyzer;
@@ -95,7 +107,7 @@ public class DSEController {
      * @param testTimeout    The timeout to apply to generated test cases in ms
      * @param packageName    The package name for the generated test files
      */
-    public DSEController(String classPath, boolean concreteDriven, SearchStrategy<?> searchStrategy, FuzzingStrategy fuzzingStrategy,
+    public DSEController(String classPath, boolean concreteDriven, SearchStrategy<?> searchStrategy, ConstructorSelectionStrategy constructorSelectionStrategy, SettersSelectionStrategy settersSelectionStrategy, FuzzingStrategy fuzzingStrategy,
             String outPath, String methodName, int maxDepth, long testTimeout, String packageName, boolean targetJUnit4)
             throws Exception {
         instrumenter = new BytecodeInstrumenter(classPath);
@@ -116,6 +128,8 @@ public class DSEController {
         this.concreteDriven = concreteDriven;
         this.fuzzingStrategy = fuzzingStrategy;
         this.searchStrategy = searchStrategy;
+        this.constructorSelectionStrategy = constructorSelectionStrategy;
+        this.settersSelectionStrategy = settersSelectionStrategy;
         this.replayStrategy = new SymbolicSearchStrategy(new DFS<SymbolicState>());
 
         this.analyzer = JavaAnalyzer.initialize(classPath, classLoader);
@@ -179,16 +193,30 @@ public class DSEController {
 
         // If class includes non-static methods, need to execute constructor first
         if (!nonStaticMuts.isEmpty()) {
-            ctor = analyzer.getJavaConstructor(instrumented != null ? instrumented : clazz);
-            if (ctor == null) {
-                throw new Exception("No constructor found for class: " + clazz.getName());
-            }
+            if (!concreteDriven) {
+                // replace this with own system
+                //ctor = analyzer.getJavaConstructor(instrumented != null ? instrumented : clazz);
 
-            // Get corresponding CFG
-            ctorSoot = analyzer.getSootConstructor(methods, ctor);
-            ctorCfg = analyzer.getCFG(ctorSoot);
-            initStates = new HashMap<>();
-            logger.info("Using constructor: {}", ctorSoot.getSignature());
+                // we could use default values for this but keeping it configurable has the possibility of breaking
+                // we default to biggest and all because it cannot result in path explosion in symbolic driven
+                constructorSelectionStrategy = ConstructorSelectionStrategy.Biggest;
+                settersSelectionStrategy = SettersSelectionStrategy.All;
+                instantiator = getObjectInstantiator(nonStaticMuts.getFirst(), nonStaticMuts.toArray(JavaSootMethod[]::new));
+
+                ctor = instantiator.getSelectedConstructor();
+
+                // then here add the list of setters
+
+                if (ctor == null) {
+                    throw new Exception("No constructor found for class: " + clazz.getName());
+                }
+
+                // Get corresponding CFG
+                ctorSoot = analyzer.getSootConstructor(methods, ctor);
+                ctorCfg = analyzer.getCFG(ctorSoot);
+                initStates = new HashMap<>();
+                logger.info("Using constructor: {}", ctorSoot.getSignature());
+            }
         }
 
         logger.info("Running {} DSE on class: {}", concreteDriven ? "concrete-driven" : "symbolic-driven",
@@ -232,6 +260,7 @@ public class DSEController {
             Arrays.sort(muts, (m1, m2) -> m1.getName().compareTo(m2.getName()));
             for (i = 0; i < muts.length; i++) {
                 JavaSootMethod method = muts[i];
+
                 if (System.currentTimeMillis() >= overallDeadline) {
                     logger.info("Time budget exceeded while iterating methods under test, stopping...");
                     break;
@@ -253,7 +282,7 @@ public class DSEController {
                 try {
                     strategy.reset();
                     logger.info("Processing method: {}", method.getName());
-                    runConcreteDriven(method, strategy);
+                    runConcreteDriven(method, strategy, muts);
                 } catch (Exception e) {
                     logger.error("Error processing method {}: {}", method.getName(), e.getMessage());
                     logger.debug("Error stack trace: ", e);
@@ -268,7 +297,14 @@ public class DSEController {
 
             SymbolicSearchStrategy strategy = searchStrategy.toSymbolic();
             initializeSymbolic(strategy);
-            runSymbolicDriven(strategy, ctorSoot);
+            List<JavaSootMethod> setters;
+            if (!nonStaticMuts.isEmpty()) {
+                // since we're using all setters, it doesn't matter which method is sent
+                setters = instantiator.getSelectedSetters();
+            } else {
+                setters = new ArrayList<>();
+            }
+            runSymbolicDriven(strategy, ctorSoot, setters);
 
             // If any unfinished states are still in the strategy, generate test cases
             Collection<SymbolicState> states = strategy.getAll();
@@ -296,7 +332,7 @@ public class DSEController {
         try {
             Optional<ArgMap> argMap = validator.evaluate(state);
             if (argMap.isPresent()) {
-                generator.addMethodTestCase(state.getMethod(), ctorSoot, argMap.get());
+                generator.addMethodTestCase(state.getMethod(), ctorSoot, argMap.get(), instantiator);
             }
         } catch (Exception e) {
             logger.error("Error generating test case for method {}: {}", state.getMethod().getName(), e.getMessage());
@@ -334,8 +370,9 @@ public class DSEController {
      *         optional otherwise
      */
     private Optional<SymbolicState> runSymbolicDriven(SymbolicSearchStrategy searchStrategy,
-            JavaSootMethod targetMethod) {
+            JavaSootMethod targetMethod, List<JavaSootMethod> setterMethods) {
         SymbolicState current;
+        int currentSetter = 0;
         while ((current = searchStrategy.next()) != null) {
             // Check if we are over the time budget
             if (System.currentTimeMillis() >= executionDeadline) {
@@ -371,6 +408,39 @@ public class DSEController {
             // Symbolically execute the statement of the current symbolic state
             List<SymbolicState> newStates = symbolic.step(current, concreteDriven);
 
+            // if setter int < setter size go to next setter
+            if (!setterMethods.isEmpty() && !current.isCtorState()) {
+                for (SymbolicState state : newStates) {
+                    if (state.isFinalState()) {
+                        if (state.isExceptionThrown() || state.isInfeasible()) {
+                            if (concreteDriven)
+                                return Optional.of(state);
+                            else
+                                generateTestCase(state);
+                            continue;
+                        }
+                        currentSetter++;
+                        if (currentSetter < setterMethods.size()) {
+                            JavaSootMethod currentMethod = setterMethods.get(currentSetter);
+                            state.setMethod(currentMethod, analyzer.getCFG(currentMethod));
+                        } else {
+                            if (concreteDriven) {
+                                initStates.put(TraceManager.hashCode(state.getMethodSignature()), state.clone());
+                                state.setMethod(targetMethod, analyzer.getCFG(targetMethod));
+                            } else {
+                                for (int i = 0; i < nonStaticMuts.size(); i++) {
+                                    JavaSootMethod target = nonStaticMuts.get(i);
+                                    // Clone state, except for the last one
+                                    SymbolicState newState = i == nonStaticMuts.size() - 1 ? state : state.clone();
+                                    newState.setMethod(target, analyzer.getCFG(target));
+                                    searchStrategy.add(newState);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // For ctor states, check for final states from which we can switch to the
             // target method(s)
             if (current.isCtorState()) {
@@ -393,18 +463,27 @@ public class DSEController {
                         // For concrete-driven, store this final ctor state for reuse and switch to the
                         // single target method being replayed right now
                         if (concreteDriven) {
-                            initStates.put(TraceManager.hashCode(state.getMethodSignature()), state.clone());
-                            state.setMethod(targetMethod, analyzer.getCFG(targetMethod));
+                            if (setterMethods.isEmpty()) {
+                                initStates.put(TraceManager.hashCode(state.getMethodSignature()), state.clone());
+                                state.setMethod(targetMethod, analyzer.getCFG(targetMethod));
+                            } else {
+                                state.setMethod(setterMethods.getFirst(), analyzer.getCFG(setterMethods.getFirst()));
+                            }
+
                         }
                         // For symbolic-driven, we can switch to any of the target methods
                         else {
-                            for (int i = 0; i < nonStaticMuts.size(); i++) {
-                                JavaSootMethod target = nonStaticMuts.get(i);
-                                // Clone state, except for the last one
-                                SymbolicState newState = i == nonStaticMuts.size() - 1 ? state : state.clone();
-                                newState.setMethod(target, analyzer.getCFG(target));
-                                searchStrategy.add(newState);
-
+                            if (setterMethods.isEmpty()) {
+                                for (int i = 0; i < nonStaticMuts.size(); i++) {
+                                    JavaSootMethod target = nonStaticMuts.get(i);
+                                    // Clone state, except for the last one
+                                    SymbolicState newState = i == nonStaticMuts.size() - 1 ? state : state.clone();
+                                    newState.setMethod(target, analyzer.getCFG(target));
+                                    searchStrategy.add(newState);
+                                }
+                            } else {
+                                state.setMethod(setterMethods.getFirst(), analyzer.getCFG(setterMethods.getFirst()));
+                                searchStrategy.add(state);
                             }
                             continue;
                         }
@@ -423,7 +502,7 @@ public class DSEController {
     }
 
     /** Run symbolic-driven DSE to replay a concrete execution. */
-    public Optional<SymbolicState> runSymbolicReplay(JavaSootMethod method) {
+    public Optional<SymbolicState> runSymbolicReplay(JavaSootMethod method, List<JavaSootMethod> setterMethods) {
         SymbolicState initState;
 
         // For static methods, start at the target method
@@ -446,16 +525,28 @@ public class DSEController {
 
         replayStrategy.add(initState);
         // Run symbolic execution
-        Optional<SymbolicState> finalState = runSymbolicDriven(replayStrategy, method);
+        Optional<SymbolicState> finalState = runSymbolicDriven(replayStrategy, method, setterMethods);
         replayStrategy.reset();
         return finalState;
     }
 
     /** Run concrete-driven DSE on the given method. */
-    private void runConcreteDriven(JavaSootMethod method, ConcreteSearchStrategy searchStrategy) throws Exception {
+    private void runConcreteDriven(JavaSootMethod method, ConcreteSearchStrategy searchStrategy, JavaSootMethod[] muts) throws Exception {
         Method javaMethod = analyzer.getJavaMethod(method.getSignature(), instrumented);
+        logger.debug("analyzing java method {} with arguments {}", javaMethod.getName(), javaMethod.getParameters());
         ArgMap argMap = new ArgMap();
         boolean deadlineReached = false;
+
+        // Setup instance for this method
+        ObjectInstantiator instantiator = getObjectInstantiator(method, muts);
+        this.ctor = instantiator.getSelectedConstructor();
+
+        // Get corresponding CFG
+        ctorSoot = analyzer.getSootConstructor(sootClass.getMethods(), ctor);
+        ctorCfg = analyzer.getCFG(ctorSoot);
+        initStates = new HashMap<>();
+        logger.debug("Using constructor: {}", ctorSoot.getSignature());
+        logger.debug("Setter count: {}", instantiator.getSelectedSetters().size());
 
         while (true) {
             // Check time budget
@@ -467,9 +558,9 @@ public class DSEController {
 
             // Concrete execution followed by symbolic replay
             TraceManager.clearEntries();
-            concrete.execute(ctor, javaMethod, argMap);
-            Optional<SymbolicState> finalState = runSymbolicReplay(method);
-            logger.debug("Replayed state: {}", finalState.isPresent() ? finalState.get() : "none");
+            concrete.execute(javaMethod, argMap, instantiator, instrumented);
+            Optional<SymbolicState> finalState = runSymbolicReplay(method, instantiator.getSelectedSetters());
+            //logger.debug("Replayed state: {}", finalState.isPresent() ? finalState.get() : "none");
 
             if (finalState.isPresent()) {
                 boolean isNew = searchStrategy.add(finalState.get());
@@ -479,7 +570,7 @@ public class DSEController {
                 if (isNew) {
                     // For the first concrete execution, argMap is populated by the concrete
                     // executor
-                    generator.addMethodTestCase(method, ctorSoot, argMap);
+                    generator.addMethodTestCase(method, ctorSoot, argMap, instantiator);
                 }
             }
 
@@ -498,5 +589,35 @@ public class DSEController {
             Pair<Model, SymbolicState> pair = candidate.get();
             argMap = validator.evaluate(pair.getFirst(), pair.getSecond().returnToRootCaller(), false);
         }
+    }
+
+    private ObjectInstantiator getObjectInstantiator(JavaSootMethod method, JavaSootMethod[] muts) throws InvocationTargetException, InstantiationException, IllegalAccessException, ClassNotFoundException, NoSuchMethodException {
+        ConstructorSelector constructorSelector = getConstructorSelector(method, muts);
+        SettersSelector settersSelector = getSettersSelector(method, muts);
+
+        return new ObjectInstantiator(constructorSelector, settersSelector, analyzer);
+    }
+
+    private ConstructorSelector getConstructorSelector(JavaSootMethod method, JavaSootMethod[] muts) {
+        ConstructorSelector constructorSelector;
+        switch (constructorSelectionStrategy) {
+            case Usage -> constructorSelector = new UsageConstructorSelector(method, clazz, muts);
+            case Random -> constructorSelector = new RandomConstructorSelector(method, clazz);
+            case Biggest -> constructorSelector = new BiggestConstructorSelector(method, clazz);
+            case Smallest -> constructorSelector = new SmallestConstructorSelector(method, clazz);
+            default -> throw new IllegalArgumentException("No selected constructor selection strategy!");
+        }
+        return constructorSelector;
+    }
+
+    private SettersSelector getSettersSelector(JavaSootMethod method, JavaSootMethod[] muts) {
+        SettersSelector settersSelector;
+        switch (settersSelectionStrategy) {
+            case Usage -> settersSelector = new UsageSettersSelector(method, clazz, muts, analyzer);
+            case All -> settersSelector = new AllSettersSelector(method, clazz, muts, analyzer);
+            case None -> settersSelector = new NoSettersSelector(method, clazz, muts, analyzer);
+            default -> throw new IllegalArgumentException("No selected setters selection strategy!");
+        }
+        return settersSelector;
     }
 }

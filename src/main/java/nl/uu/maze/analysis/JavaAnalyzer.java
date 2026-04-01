@@ -57,6 +57,19 @@ public class JavaAnalyzer {
                 "JavaAnalyzer already initialized. Use getInstance() to access the existing instance.");
     }
 
+
+    /**
+     * Reinitializes the JavaAnalyzer with the given class path and class loader
+     * Only to be used in unit testing
+     *
+     * @return the initialized JavaAnalyzer instance
+     * @throws MalformedURLException
+     */
+    public static JavaAnalyzer reinitialize(String classPath, ClassLoader classLoader) throws MalformedURLException {
+        instance = new JavaAnalyzer(classPath, classLoader);
+        return instance;
+    }
+
     /**
      * Returns the singleton instance of the JavaAnalyzer.
      */
@@ -254,6 +267,21 @@ public class JavaAnalyzer {
             return null;
         }
         return ctors[0];
+    }
+
+    public Class<?> getConcreteClass(Class<?> clazz) {
+        if (clazz.isInterface()) {
+            Class<?> implClass = getDefaultImplementation(clazz);
+            if (implClass != null) {
+                logger.debug("Using default implementation for interface {}: {}", clazz.getName(), implClass.getName());
+                return implClass;
+            } else {
+                logger.warn("Cannot find constructor for an interface without default implementation: {}",
+                        clazz.getName());
+                return null;
+            }
+        }
+        return clazz;
     }
 
     /**
