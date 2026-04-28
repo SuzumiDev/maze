@@ -8,14 +8,7 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.regex.Pattern;
 
 import nl.uu.maze.execution.concrete.ObjectInstantiation;
@@ -26,6 +19,8 @@ import nl.uu.maze.execution.concrete.objectinstantiation.setters.AllSettersSelec
 import nl.uu.maze.execution.concrete.objectinstantiation.setters.NoSettersSelector;
 import nl.uu.maze.execution.concrete.objectinstantiation.setters.SettersSelector;
 import nl.uu.maze.execution.concrete.objectinstantiation.setters.UsageSettersSelector;
+import nl.uu.maze.fuzzing.Fuzzer;
+import nl.uu.maze.fuzzing.Suite;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -136,7 +131,7 @@ public class DSEController {
 
         this.concrete = new ConcreteExecutor();
         this.validator = new SymbolicStateValidator();
-        this.symbolic = new SymbolicExecutor(concrete, validator, analyzer, searchStrategy.requiresCoverageData(),
+        this.symbolic = new SymbolicExecutor(concrete, validator, analyzer, searchStrategy.requiresCoverageData() || fuzzingStrategy == FuzzingStrategy.GENETIC,
                 searchStrategy.requiresBranchHistoryData());
         this.generator = new JUnitTestGenerator(targetJUnit4, analyzer, concrete, testTimeout, packageName);
     }
@@ -282,7 +277,7 @@ public class DSEController {
                 try {
                     strategy.reset();
                     logger.info("Processing method: {}", method.getName());
-                    runConcreteDriven(method, strategy, muts);
+                    runConcreteDriven(method, strategy, muts, false, true, new ArgMap());
                 } catch (Exception e) {
                     logger.error("Error processing method {}: {}", method.getName(), e.getMessage());
                     logger.debug("Error stack trace: ", e);
@@ -530,11 +525,51 @@ public class DSEController {
         return finalState;
     }
 
+    private void runGenetic(JavaSootMethod method, ConcreteSearchStrategy searchStrategy, JavaSootMethod[] muts) throws Exception {
+        Method javaMethod = analyzer.getJavaMethod(method.getSignature(), instrumented);
+        CoverageTracker coverageTracker = CoverageTracker.getInstance();
+        List<Suite> suites = new ArrayList<>();
+
+        for (int i = 0; i < 5; i++) {
+            Suite suite = generateRandomSuite(coverageTracker, searchStrategy, method, javaMethod, muts);
+            suites.add(suite);
+        }
+
+        Collections.sort(suites);
+
+    }
+
+    private List<Suite> geneticLoop(JavaSootMethod method, ConcreteSearchStrategy searchStrategy, JavaSootMethod[] muts, List<Suite> initialSuite) throws Exception {
+        Method javaMethod = analyzer.getJavaMethod(method.getSignature(), instrumented);
+        CoverageTracker coverageTracker = CoverageTracker.getInstance();
+        List<Suite> suites = new ArrayList<>();
+
+
+        return suites;
+    }
+
+    private Suite generateRandomSuite(CoverageTracker coverageTracker, ConcreteSearchStrategy searchStrategy, JavaSootMethod method, Method javaMethod, JavaSootMethod[] muts) throws Exception {
+        coverageTracker.reset();
+        Suite suite = new Suite();
+
+        for (int j = 0; j < 5; j++) {
+            searchStrategy.reset(); // todo: see if it's really here that you need to put this
+            ArgMap argMap = new ArgMap();
+            ObjectInstantiation.generateRandomArgs(javaMethod.getParameters(), MethodType.METHOD, argMap, javaMethod.getName(), true);
+
+            argMap = runConcreteDriven(method, searchStrategy, muts, true, j == 4, argMap);
+            suite.addArgMap(argMap);
+        }
+        float lineCoverage = (float) method.getBody().getStmts().size() / coverageTracker.getCoveredNumber(); // todo: modify this to also include the amount of times a line is covered
+        suite.setLineCoverage(lineCoverage);
+        suite.setTimesCovered(coverageTracker.getTimesCovered());
+        return suite;
+    }
+
     /** Run concrete-driven DSE on the given method. */
-    private void runConcreteDriven(JavaSootMethod method, ConcreteSearchStrategy searchStrategy, JavaSootMethod[] muts) throws Exception {
+    private ArgMap runConcreteDriven(JavaSootMethod method, ConcreteSearchStrategy searchStrategy, JavaSootMethod[] muts, boolean performSingle, boolean performPcg, ArgMap argMap) throws Exception {
         Method javaMethod = analyzer.getJavaMethod(method.getSignature(), instrumented);
         logger.debug("analyzing java method {} with arguments {}", javaMethod.getName(), javaMethod.getParameters());
-        ArgMap argMap = new ArgMap();
         boolean deadlineReached = false;
 
         // Setup instance for this method
@@ -578,17 +613,24 @@ public class DSEController {
                 break;
             }
 
-            Optional<Pair<Model, SymbolicState>> candidate = searchStrategy.next(validator, executionDeadline);
-            // If we cannot find a new path condition, we are done
-            if (candidate.isEmpty()) {
-                break;
+            if (performPcg) {
+                Optional<Pair<Model, SymbolicState>> candidate = searchStrategy.next(validator, executionDeadline);
+                // If we cannot find a new path condition, we are done
+                if (candidate.isEmpty()) {
+                    break;
+                }
+
+                // If a new path condition is found, evaluate it to get the next set of
+                // arguments which will be used in the next iteration for concrete execution
+                Pair<Model, SymbolicState> pair = candidate.get();
+                argMap = validator.evaluate(pair.getFirst(), pair.getSecond().returnToRootCaller(), false);
             }
 
-            // If a new path condition is found, evaluate it to get the next set of
-            // arguments which will be used in the next iteration for concrete execution
-            Pair<Model, SymbolicState> pair = candidate.get();
-            argMap = validator.evaluate(pair.getFirst(), pair.getSecond().returnToRootCaller(), false);
+            if (performSingle)
+                break;
         }
+
+        return argMap;
     }
 
     private ObjectInstantiator getObjectInstantiator(JavaSootMethod method, JavaSootMethod[] muts) throws InvocationTargetException, InstantiationException, IllegalAccessException, ClassNotFoundException, NoSuchMethodException {

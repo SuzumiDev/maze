@@ -20,11 +20,13 @@ public class CoverageTracker {
     }
 
     private final Set<Stmt> coveredStmts;
+    private int timesCovered;
 
     private CoverageTracker() {
         // Use identity hash map to avoid potentially expensive equals() calls on
         // statements (which are unique by reference, so reference equality suffices)
         coveredStmts = Collections.newSetFromMap(new IdentityHashMap<>());
+        timesCovered = 0;
     }
 
     /**
@@ -34,6 +36,7 @@ public class CoverageTracker {
      *         otherwise
      */
     public boolean setCovered(Stmt stmt) {
+        timesCovered++;
         return coveredStmts.add(stmt);
     }
 
@@ -42,6 +45,14 @@ public class CoverageTracker {
      */
     public boolean isCovered(Stmt stmt) {
         return coveredStmts.contains(stmt);
+    }
+
+    public int getCoveredNumber() {
+        return coveredStmts.size();
+    }
+
+    public int getTimesCovered() {
+        return timesCovered;
     }
 
     /**
@@ -54,5 +65,6 @@ public class CoverageTracker {
      */
     public void reset() {
         coveredStmts.clear();
+        timesCovered = 0;
     }
 }

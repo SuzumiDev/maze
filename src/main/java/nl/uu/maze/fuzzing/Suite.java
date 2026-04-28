@@ -3,78 +3,59 @@ package nl.uu.maze.fuzzing;
 import nl.uu.maze.execution.ArgMap;
 import sootup.java.core.JavaSootMethod;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
  * Represents a test suite as argument lists
  */
-public class Suite {
-    private Map<JavaSootMethod, ArgMap> argMapMap;
+public class Suite implements Comparable<Suite> {
+    private List<ArgMap> argMaps;
 
     private float lineCoverage;
-    private float conditionCoverage;
+    private int timesCovered;
 
     public Suite() {
-        this.argMapMap = new HashMap<>();
+        this.argMaps = new ArrayList<>();
         this.lineCoverage = 0.0f;
-        this.conditionCoverage = 0.0f;
     }
 
-    public Suite(Map<JavaSootMethod, ArgMap> argMapMap) {
-        this.argMapMap = argMapMap;
+    public Suite(List<ArgMap> argMaps) {
+        this.argMaps = argMaps;
         this.lineCoverage = 0.0f;
-        this.conditionCoverage = 0.0f;
     }
 
-    /**
-     * Get the arguments for the provided soot method
-     * @param method The method to get the arguments for
-     * @return The arguments for the provided method
-     */
-    public ArgMap getArguments(JavaSootMethod method) {
-        return argMapMap.get(method);
+    public Suite(List<ArgMap> argMaps, float lineCoverage) {
+        this.argMaps = argMaps;
+        this.lineCoverage = lineCoverage;
     }
 
-    /**
-     * Put a new argument set in the map
-     * @param method The soot method to couple the arguments to
-     * @param argMap The argument map to put
-     * @return Whether the operation was successful
-     */
-    public boolean putArgMap(JavaSootMethod method, ArgMap argMap) {
-        if (argMapMap.containsKey(method)) return false;
-
-        argMapMap.put(method, argMap);
-        return true;
-    }
-
-    /**
-     * Change an existing argument map in the map
-     * @param method The method to change the map for
-     * @param argMap The new argument map
-     * @return Whether the operation was successful
-     */
-    public boolean setArgMap(JavaSootMethod method, ArgMap argMap) {
-        if (!argMapMap.containsKey(method)) return false;
-
-        argMapMap.replace(method, argMap);
-        return true;
+    public void addArgMap(ArgMap argMap) {
+        argMaps.add(argMap);
     }
 
     public void setLineCoverage(float coverage) {
         this.lineCoverage = coverage;
     }
 
-    public void setConditionCoverage(float coverage) {
-        this.conditionCoverage = coverage;
-    }
-
     public float getLineCoverage() {
         return lineCoverage;
     }
 
-    public float getConditionCoverage() {
-        return conditionCoverage;
+    public void setTimesCovered(int timesCovered) {
+        this.timesCovered = timesCovered;
+    }
+
+    public int getTimesCovered() {
+        return timesCovered;
+    }
+
+    @Override
+    public int compareTo(Suite other) {
+        int comp = Float.compare(other.getLineCoverage(), this.getLineCoverage());
+        if (comp != 0) return comp;
+        return Integer.compare(other.getTimesCovered(), this.getTimesCovered());
     }
 }
