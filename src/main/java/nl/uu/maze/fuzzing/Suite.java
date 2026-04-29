@@ -58,4 +58,8 @@ public class Suite implements Comparable<Suite> {
         if (comp != 0) return comp;
         return Integer.compare(other.getTimesCovered(), this.getTimesCovered());
     }
+
+    public List<ArgMap> getArgMaps() {
+        return argMaps;
+    }
 }

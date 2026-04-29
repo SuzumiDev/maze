@@ -21,6 +21,7 @@ import nl.uu.maze.execution.concrete.objectinstantiation.setters.SettersSelector
 import nl.uu.maze.execution.concrete.objectinstantiation.setters.UsageSettersSelector;
 import nl.uu.maze.fuzzing.Fuzzer;
 import nl.uu.maze.fuzzing.Suite;
+import nl.uu.maze.util.ObjectUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -71,6 +72,7 @@ public class DSEController {
     private final SymbolicStateValidator validator;
     private final ConcreteExecutor concrete;
     private final JUnitTestGenerator generator;
+    private static final Random random = new Random();
 
     private List<JavaSootMethod> staticMuts = new ArrayList<>();
     private List<JavaSootMethod> nonStaticMuts = new ArrayList<>();
@@ -530,22 +532,97 @@ public class DSEController {
         CoverageTracker coverageTracker = CoverageTracker.getInstance();
         List<Suite> suites = new ArrayList<>();
 
+        int maxEvos = 3; // todo: change this into a parameter
+
+
+        // create initial 6 suites using random argument generation
         for (int i = 0; i < 5; i++) {
             Suite suite = generateRandomSuite(coverageTracker, searchStrategy, method, javaMethod, muts);
             suites.add(suite);
         }
 
+        // sort the suites based on their fitness value
         Collections.sort(suites);
+
+        boolean timeLimit = false;
+
+        // loop genetic until timelimit
+        while (!timeLimit) { // todo: timelimit
+
+            // run genetic until the maximum parameter value is reached
+            for (int i = 0; i < maxEvos; i++) {
+                geneticLoop(method, javaMethod, searchStrategy, muts, suites);
+            }
+
+            // run PCG (by running concretedriven) on the first suite for all its argmaps
+            // todo
+
+
+        }
 
     }
 
-    private List<Suite> geneticLoop(JavaSootMethod method, ConcreteSearchStrategy searchStrategy, JavaSootMethod[] muts, List<Suite> initialSuite) throws Exception {
-        Method javaMethod = analyzer.getJavaMethod(method.getSignature(), instrumented);
+    private void geneticLoop(JavaSootMethod method, Method javaMethod, ConcreteSearchStrategy searchStrategy, JavaSootMethod[] muts, List<Suite> suites) throws Exception {
+        // perform genetic function on pairs of parents and sort the list
+        for (int i = 0; i < 5; i += 2) {
+            Pair<Suite, Suite> suitePair = geneticFunction(suites.get(i), suites.get(i + 1));
+
+            setCoverage(suitePair.first(), method, muts, searchStrategy);
+            setCoverage(suitePair.second(), method, muts, searchStrategy);
+
+            suites.add(suitePair.first());
+            suites.add(suitePair.second());
+        }
+        Collections.sort(suites);
+
+        // prune the list until the 6 best suites remain
+        int prune = suites.size() - 6;
+        suites.subList(suites.size() - prune, suites.size()).clear();
+    }
+
+    private void setCoverage(Suite suite, JavaSootMethod method, JavaSootMethod[] muts, ConcreteSearchStrategy searchStrategy) throws Exception {
         CoverageTracker coverageTracker = CoverageTracker.getInstance();
-        List<Suite> suites = new ArrayList<>();
 
+        coverageTracker.reset();
+        for (ArgMap argMap : suite.getArgMaps()) {
+            runConcreteDriven(method, searchStrategy, muts, true, false, argMap);
+        }
+        float lineCoverage = (float) method.getBody().getStmts().size() / coverageTracker.getCoveredNumber();
+        suite.setLineCoverage(lineCoverage);
+        suite.setTimesCovered(coverageTracker.getTimesCovered());
+    }
 
-        return suites;
+    private Pair<Suite, Suite> geneticFunction(Suite parent0, Suite parent1) {
+        Suite child0 = new Suite();
+        Suite child1 = new Suite();
+
+        int parent0Fitness = (int) calculateFitness(parent0);
+        int parent1Fitness = (int) calculateFitness(parent1);
+        int totalFitness = parent0Fitness + parent1Fitness;
+
+        for (int i = 0; i < parent0.getArgMaps().size(); i++) {
+            int r = random.nextInt(totalFitness);
+            if (r < parent0Fitness) {
+                child0.addArgMap(parent0.getArgMaps().get(i));
+                child1.addArgMap(parent1.getArgMaps().get(i));
+            } else {
+                child0.addArgMap(parent1.getArgMaps().get(i));
+                child1.addArgMap(parent0.getArgMaps().get(i));
+            }
+        }
+
+        mutate(child0);
+        mutate(child1);
+
+        return new Pair<>(child0, child1);
+    }
+
+    private void mutate(Suite suite) {
+        return; // todo: mutate
+    }
+
+    private float calculateFitness(Suite suite) {
+        return suite.getLineCoverage() * suite.getLineCoverage();
     }
 
     private Suite generateRandomSuite(CoverageTracker coverageTracker, ConcreteSearchStrategy searchStrategy, JavaSootMethod method, Method javaMethod, JavaSootMethod[] muts) throws Exception {
@@ -557,7 +634,7 @@ public class DSEController {
             ArgMap argMap = new ArgMap();
             ObjectInstantiation.generateRandomArgs(javaMethod.getParameters(), MethodType.METHOD, argMap, javaMethod.getName(), true);
 
-            argMap = runConcreteDriven(method, searchStrategy, muts, true, j == 4, argMap);
+            argMap = runConcreteDriven(method, searchStrategy, muts, true, false, argMap);
             suite.addArgMap(argMap);
         }
         float lineCoverage = (float) method.getBody().getStmts().size() / coverageTracker.getCoveredNumber(); // todo: modify this to also include the amount of times a line is covered
