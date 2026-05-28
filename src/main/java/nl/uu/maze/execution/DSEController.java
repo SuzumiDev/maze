@@ -19,9 +19,9 @@ import nl.uu.maze.execution.concrete.objectinstantiation.setters.AllSettersSelec
 import nl.uu.maze.execution.concrete.objectinstantiation.setters.NoSettersSelector;
 import nl.uu.maze.execution.concrete.objectinstantiation.setters.SettersSelector;
 import nl.uu.maze.execution.concrete.objectinstantiation.setters.UsageSettersSelector;
-import nl.uu.maze.fuzzing.Fuzzer;
+import nl.uu.maze.fuzzing.Coverable;
+import nl.uu.maze.fuzzing.Genotype;
 import nl.uu.maze.fuzzing.Suite;
-import nl.uu.maze.util.ObjectUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -74,8 +74,9 @@ public class DSEController {
     private final JUnitTestGenerator generator;
     private static final Random random = new Random();
 
-    private List<JavaSootMethod> staticMuts = new ArrayList<>();
-    private List<JavaSootMethod> nonStaticMuts = new ArrayList<>();
+    private final List<JavaSootMethod> staticMuts = new ArrayList<>();
+    private final List<JavaSootMethod> nonStaticMuts = new ArrayList<>();
+    private final List<JavaSootMethod> constructors = new ArrayList<>();
     private Constructor<?> ctor;
     private JavaSootMethod ctorSoot;
     private StmtGraph<?> ctorCfg;
@@ -127,7 +128,7 @@ public class DSEController {
         this.searchStrategy = searchStrategy;
         this.constructorSelectionStrategy = constructorSelectionStrategy;
         this.settersSelectionStrategy = settersSelectionStrategy;
-        this.replayStrategy = new SymbolicSearchStrategy(new DFS<SymbolicState>());
+        this.replayStrategy = new SymbolicSearchStrategy(new DFS<>());
 
         this.analyzer = JavaAnalyzer.initialize(classPath, classLoader);
 
@@ -169,6 +170,8 @@ public class DSEController {
         for (JavaSootMethod method : methods) {
             if (!method.isPublic() || pattern.matcher(method.getName()).matches()
                     || (!methodName.equals("all") && !method.getName().equals(methodName))) {
+                if (method.getName().contains("<init>"))
+                    constructors.add(method);
                 continue;
             }
 
@@ -178,6 +181,8 @@ public class DSEController {
                 nonStaticMuts.add(method);
             }
         }
+
+        logger.debug("constructor list {}", constructors);
 
         if (staticMuts.isEmpty() && nonStaticMuts.isEmpty()) {
             if (!methodName.equals("all")) {
@@ -236,7 +241,7 @@ public class DSEController {
     /**
      * Run the dynamic symbolic execution engine on the current class.
      */
-    private void run() throws Exception {
+    private void run() {
         overallDeadline = timeBudget > 0 ? System.currentTimeMillis() + timeBudget : Long.MAX_VALUE;
 
         // Concrete-driven is run one method at a time, while symbolic-driven is run on
@@ -279,7 +284,11 @@ public class DSEController {
                 try {
                     strategy.reset();
                     logger.info("Processing method: {}", method.getName());
-                    runConcreteDriven(method, strategy, muts, false, true, new ArgMap());
+                    switch (fuzzingStrategy) {
+                        case NONE -> runConcreteDriven(method, strategy, muts, false, true, new ArgMap());
+                        case RANDOM -> runConcreteDriven(method, strategy, muts, false, true, new ArgMap()); //todo: fix random
+                        case GENETIC -> runGenetic(method, strategy, muts);
+                    }
                 } catch (Exception e) {
                     logger.error("Error processing method {}: {}", method.getName(), e.getMessage());
                     logger.debug("Error stack trace: ", e);
@@ -528,36 +537,87 @@ public class DSEController {
     }
 
     private void runGenetic(JavaSootMethod method, ConcreteSearchStrategy searchStrategy, JavaSootMethod[] muts) throws Exception {
+        logger.debug("running genetic with muts {}", (Object) muts);
         Method javaMethod = analyzer.getJavaMethod(method.getSignature(), instrumented);
         CoverageTracker coverageTracker = CoverageTracker.getInstance();
         List<Suite> suites = new ArrayList<>();
 
         int maxEvos = 3; // todo: change this into a parameter
 
+        ObjectInstantiator instantiator = getObjectInstantiator(method, muts);
+
+        this.ctor = instantiator.getSelectedConstructor();
+
+        if (this.ctor == null) {
+            this.ctor = javaMethod.getClass().getConstructors()[0];
+        }
+
+        // Get corresponding CFG
+        ctorSoot = analyzer.getSootConstructor(sootClass.getMethods(), ctor);
+        ctorCfg = analyzer.getCFG(ctorSoot);
+
+        SymbolicState startingState = new SymbolicState(ctorSoot, ctorCfg);
+
+        int totalTransitions = CoverageTracker.countRealTransitions(startingState, method, analyzer.getCFG(method));
 
         // create initial 6 suites using random argument generation
         for (int i = 0; i < 5; i++) {
-            Suite suite = generateRandomSuite(coverageTracker, searchStrategy, method, javaMethod, muts);
+            Suite suite = generateRandomSuite(coverageTracker, searchStrategy, method, javaMethod, muts, instantiator.getSelectedConstructor(), instantiator.getSelectedSetters().toArray(JavaSootMethod[]::new), totalTransitions);
             suites.add(suite);
         }
 
         // sort the suites based on their fitness value
         Collections.sort(suites);
 
-        boolean timeLimit = false;
-
         // loop genetic until timelimit
-        while (!timeLimit) { // todo: timelimit
+        while (System.currentTimeMillis() < executionDeadline) {
 
             // run genetic until the maximum parameter value is reached
             for (int i = 0; i < maxEvos; i++) {
                 geneticLoop(method, javaMethod, searchStrategy, muts, suites);
             }
 
+            logger.debug("coverage after evo:");
+            for (Suite s : suites) {
+                logger.debug("line: {}", s.getLineCoverage());
+                logger.debug("times: {}", s.getTimesCovered());
+            }
+
+            if (System.currentTimeMillis() >= executionDeadline) return;
+
             // run PCG (by running concretedriven) on the first suite for all its argmaps
-            // todo
+            Suite pcgSuite = new Suite();
+            for (ArgMap best : suites.getFirst().getArgMaps()) {
+                coverageTracker.reset();
+                ArgMap argMap = runConcreteDriven(method, searchStrategy, muts, true, true, best);
+                logger.debug("new argmap {}", argMap);
+                pcgSuite.addArgMap(argMap);
+            }
+
+            float lineCoverage = (float) method.getBody().getStmts().size() / coverageTracker.getCoveredNumber();
+            pcgSuite.setLineCoverage(lineCoverage);
+            pcgSuite.setTimesCovered(coverageTracker.getTimesCovered());
+
+            float transitionCoverage = (float) CoverageTracker.countTransitions(method.getBody()) / coverageTracker.getCoveredTransitionsNumber(); // todo: this might be stupid
+            pcgSuite.setTransitionCoverage(transitionCoverage);
+
+            suites.add(pcgSuite);
+
+            Collections.sort(suites);
+
+            logger.debug("coverage after pcg:");
+            for (Suite s : suites) {
+                logger.debug("line: {}", s.getLineCoverage());
+                logger.debug("times: {}", s.getTimesCovered());
+            }
 
 
+        }
+
+        logger.debug("final coverage: ");
+        for (Suite s : suites) {
+            logger.debug("line: {}", s.getLineCoverage());
+            logger.debug("times: {}", s.getTimesCovered());
         }
 
     }
@@ -565,7 +625,7 @@ public class DSEController {
     private void geneticLoop(JavaSootMethod method, Method javaMethod, ConcreteSearchStrategy searchStrategy, JavaSootMethod[] muts, List<Suite> suites) throws Exception {
         // perform genetic function on pairs of parents and sort the list
         for (int i = 0; i < 5; i += 2) {
-            Pair<Suite, Suite> suitePair = geneticFunction(suites.get(i), suites.get(i + 1));
+            Pair<Suite, Suite> suitePair = geneticFunction(suites.get(i), suites.get(i + 1), javaMethod);
 
             setCoverage(suitePair.first(), method, muts, searchStrategy);
             setCoverage(suitePair.second(), method, muts, searchStrategy);
@@ -590,15 +650,29 @@ public class DSEController {
         float lineCoverage = (float) method.getBody().getStmts().size() / coverageTracker.getCoveredNumber();
         suite.setLineCoverage(lineCoverage);
         suite.setTimesCovered(coverageTracker.getTimesCovered());
+
+        float transitionCoverage = (float) CoverageTracker.countTransitions(method.getBody()) / coverageTracker.getCoveredTransitionsNumber(); // todo: this might be stupid
+        suite.setTransitionCoverage(transitionCoverage);
+
+        // todo:
+        // add transition coverage
+        // see if the prediction is accurate
+        // maybe change it to be calculated with a starting state
+        // do that at the start of the genetic, not
+
     }
 
-    private Pair<Suite, Suite> geneticFunction(Suite parent0, Suite parent1) {
+    private Pair<Suite, Suite> geneticFunction(Suite parent0, Suite parent1, Method javaMethod) {
         Suite child0 = new Suite();
         Suite child1 = new Suite();
 
         int parent0Fitness = (int) calculateFitness(parent0);
         int parent1Fitness = (int) calculateFitness(parent1);
         int totalFitness = parent0Fitness + parent1Fitness;
+        if (totalFitness <= 1) { // todo: this is stupid, try something else
+            parent0Fitness = 1;
+            totalFitness = 2;
+        }
 
         for (int i = 0; i < parent0.getArgMaps().size(); i++) {
             int r = random.nextInt(totalFitness);
@@ -611,35 +685,99 @@ public class DSEController {
             }
         }
 
-        mutate(child0);
-        mutate(child1);
+        mutate(child0, 10, javaMethod);
+        mutate(child1, 10, javaMethod);
 
         return new Pair<>(child0, child1);
     }
 
-    private void mutate(Suite suite) {
-        return; // todo: mutate
+    private Pair<Genotype, Genotype> genotypeGeneticFunction(Genotype parent0, Genotype parent1) {
+        Genotype child0 = new Genotype();
+        Genotype child1 = new Genotype();
+
+        int parent0Fitness = (int) calculateFitness(parent0);
+        int parent1Fitness = (int) calculateFitness(parent1);
+        int totalFitness = parent0Fitness + parent1Fitness;
+        if (totalFitness <= 1) { // todo: this is stupid, try something else
+            parent0Fitness = 1;
+            totalFitness = 2;
+        }
+
+        var parent0Args = parent0.getArgMap().args.entrySet();
+
+        for (var pair : parent0Args) {
+            int r = random.nextInt(totalFitness);
+            if (r < parent0Fitness) {
+                child0.getArgMap().set(pair.getKey(), pair.getValue());
+                child1.getArgMap().set(pair.getKey(), parent1.getArgMap().get(pair.getKey()));
+            } else {
+                child0.getArgMap().set(pair.getKey(), parent0.getArgMap().get(pair.getKey()));
+                child1.getArgMap().set(pair.getKey(), pair.getValue());
+            }
+        }
+
+        return new Pair<>(child0, child1);
     }
 
-    private float calculateFitness(Suite suite) {
-        return suite.getLineCoverage() * suite.getLineCoverage();
+    private void mutate(Suite suite, int setMaximum, Method javaMethod) {
+        int t = suite.getArgMaps().size();
+
+        for (ArgMap argMap : suite.getArgMaps()) {
+            if (random.nextInt(t) == 0) {
+                for (var pair : argMap.args.entrySet()) {
+                    Object o = switch (pair.getValue().getClass().getTypeName()) {
+                        case "int" -> random.nextInt(2) == 0 ? random.nextInt(Integer.MAX_VALUE) : -1 * random.nextInt(Integer.MAX_VALUE);
+                        case "double" -> random.nextInt(2) == 0 ? random.nextDouble(Double.MAX_VALUE) : -1.0 * random.nextDouble(Double.MAX_VALUE);
+                        case "float" ->  random.nextInt(2) == 0 ? random.nextFloat(Float.MAX_VALUE) : -1.0 * random.nextFloat(Float.MAX_VALUE);
+                        case "long" -> random.nextInt(2) == 0 ? random.nextLong(Long.MAX_VALUE) : -1 * random.nextLong(Long.MAX_VALUE);
+                        case "short" -> random.nextInt(2) == 0 ? (short) random.nextInt(Short.MAX_VALUE) : (short) (-1 * random.nextInt(Short.MAX_VALUE));
+                        case "byte" -> (byte) random.nextInt(2) == 0 ? (byte) random.nextInt(Byte.MAX_VALUE) : (byte) (-1 * ( random.nextInt(Byte.MAX_VALUE)));
+                        case "char" -> (char) random.nextInt(Character.MAX_VALUE);
+                        case "boolean" -> !((boolean)pair.getValue());
+                        case "java.lang.String" -> ((String)pair.getValue()) + (char)(random.nextInt(Character.MAX_VALUE));
+                        default -> pair.getValue(); // leave the object the original
+                    };
+                }
+            }
+        }
+
+        if (t < setMaximum) {
+            double chance = 0.1;
+            while (Math.random() < chance && suite.getArgMaps().size() < setMaximum) {
+                ArgMap argMap = new ArgMap();
+                ObjectInstantiation.generateRandomArgs(javaMethod.getParameters(), MethodType.METHOD, argMap, javaMethod.getName(), true);
+                chance *= chance;
+            }
+        }
     }
 
-    private Suite generateRandomSuite(CoverageTracker coverageTracker, ConcreteSearchStrategy searchStrategy, JavaSootMethod method, Method javaMethod, JavaSootMethod[] muts) throws Exception {
+    private float calculateFitness(Coverable coverable) {
+        return coverable.getLineCoverage() * coverable.getLineCoverage();
+    }
+
+    private Suite generateRandomSuite(CoverageTracker coverageTracker, ConcreteSearchStrategy searchStrategy, JavaSootMethod method, Method javaMethod, JavaSootMethod[] muts, Constructor<?> constructor, JavaSootMethod[] setters, int totalLines) throws Exception {
         coverageTracker.reset();
         Suite suite = new Suite();
 
         for (int j = 0; j < 5; j++) {
-            searchStrategy.reset(); // todo: see if it's really here that you need to put this
+            //searchStrategy.reset(); // todo: see if it's really here that you need to put this
             ArgMap argMap = new ArgMap();
             ObjectInstantiation.generateRandomArgs(javaMethod.getParameters(), MethodType.METHOD, argMap, javaMethod.getName(), true);
+            ObjectInstantiation.generateRandomArgs(constructor.getParameters(), MethodType.CTOR, argMap, constructor.getName(), true);
+            for (JavaSootMethod setter : setters) {
+                Method m = analyzer.getJavaMethod(setter.getSignature(), instrumented);
+                ObjectInstantiation.generateRandomArgs(m.getParameters(), MethodType.METHOD, argMap, m.getName(), true);
+            }
 
             argMap = runConcreteDriven(method, searchStrategy, muts, true, false, argMap);
             suite.addArgMap(argMap);
         }
-        float lineCoverage = (float) method.getBody().getStmts().size() / coverageTracker.getCoveredNumber(); // todo: modify this to also include the amount of times a line is covered
+        float lineCoverage = (float) method.getBody().getStmts().size() / coverageTracker.getCoveredNumber(); // todo: modify this to include cons and setters
         suite.setLineCoverage(lineCoverage);
         suite.setTimesCovered(coverageTracker.getTimesCovered());
+
+        float transitionCoverage = (float) totalLines / coverageTracker.getCoveredTransitionsNumber(); // todo: this might be stupid
+        suite.setTransitionCoverage(transitionCoverage);
         return suite;
     }
 
@@ -652,6 +790,10 @@ public class DSEController {
         // Setup instance for this method
         ObjectInstantiator instantiator = getObjectInstantiator(method, muts);
         this.ctor = instantiator.getSelectedConstructor();
+
+        if (this.ctor == null) {
+            this.ctor = javaMethod.getClass().getConstructors()[0];
+        }
 
         // Get corresponding CFG
         ctorSoot = analyzer.getSootConstructor(sootClass.getMethods(), ctor);
@@ -720,7 +862,7 @@ public class DSEController {
     private ConstructorSelector getConstructorSelector(JavaSootMethod method, JavaSootMethod[] muts) {
         ConstructorSelector constructorSelector;
         switch (constructorSelectionStrategy) {
-            case Usage -> constructorSelector = new UsageConstructorSelector(method, clazz, muts);
+            case Usage -> constructorSelector = new UsageConstructorSelector(method, clazz, constructors.toArray(JavaSootMethod[]::new));
             case Random -> constructorSelector = new RandomConstructorSelector(method, clazz);
             case Biggest -> constructorSelector = new BiggestConstructorSelector(method, clazz);
             case Smallest -> constructorSelector = new SmallestConstructorSelector(method, clazz);

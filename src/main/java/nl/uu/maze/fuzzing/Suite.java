@@ -11,20 +11,26 @@ import java.util.Map;
 /**
  * Represents a test suite as argument lists
  */
-public class Suite implements Comparable<Suite> {
+public class Suite implements Comparable<Suite>, Coverable {
     private List<ArgMap> argMaps;
 
     private float lineCoverage;
     private int timesCovered;
+    private float transitionCoverage;
+
 
     public Suite() {
         this.argMaps = new ArrayList<>();
         this.lineCoverage = 0.0f;
+        this.timesCovered = 0;
+        this.transitionCoverage = 0.0f;
     }
 
     public Suite(List<ArgMap> argMaps) {
         this.argMaps = argMaps;
         this.lineCoverage = 0.0f;
+        this.timesCovered = 0;
+        this.transitionCoverage = 0.0f;
     }
 
     public Suite(List<ArgMap> argMaps, float lineCoverage) {
@@ -51,6 +57,15 @@ public class Suite implements Comparable<Suite> {
     public int getTimesCovered() {
         return timesCovered;
     }
+
+    public void setTransitionCoverage(float transitionCoverage) {
+        this.transitionCoverage = transitionCoverage;
+    }
+
+    public float getTransitionCoverage() {
+        return transitionCoverage;
+    }
+
 
     @Override
     public int compareTo(Suite other) {

@@ -16,6 +16,7 @@ public class UsageConstructorSelector extends ConstructorSelector {
     public UsageConstructorSelector(JavaSootMethod method, Class<?> clazz, JavaSootMethod[] methods) {
         super(method, clazz);
         this.methods = methods;
+        logger.debug("we are usaging");
     }
 
     @Override
@@ -24,12 +25,15 @@ public class UsageConstructorSelector extends ConstructorSelector {
         JavaSootMethod selected = null;
         int highestRelevant = 0;
         for (JavaSootMethod method1 : methods) {
+            logger.debug("we are trying to try");
             if (!method1.getName().contains("<init>")) continue;
             int relevant = 0;
             for (String field : ObjectInstantiation.getSideEffects(method1)) {
                 if (usedFields.contains(field))
                     relevant++;
             }
+
+            logger.debug("we are trying");
 
             if (selected == null) {
                 selected = method1;
@@ -42,6 +46,7 @@ public class UsageConstructorSelector extends ConstructorSelector {
                 highestRelevant = relevant;
                 continue;
             }
+            logger.debug("we have arrived");
 
             if (relevant == highestRelevant) {
                 if (selected.getParameterCount() > method1.getParameterCount()) {

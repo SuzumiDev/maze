@@ -365,6 +365,7 @@ public class SymbolicState implements SearchTarget {
     public void recordCoverage() {
         if (!exceptionThrown) {
             boolean newCoverage = coverageTracker.setCovered(stmt);
+            coverageTracker.setCovered(prevStmt, stmt);
             if (newCoverage) {
                 newCoverageDepths.add(depth);
             }
