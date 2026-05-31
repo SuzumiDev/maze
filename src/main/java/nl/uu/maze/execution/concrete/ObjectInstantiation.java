@@ -188,7 +188,7 @@ public class ObjectInstantiation {
             if (stmt instanceof JAssignStmt jAssignStmt) {
                 if (!jAssignStmt.containsFieldRef()) {
                     if (jAssignStmt.containsArrayRef()) {
-                        logger.debug("Todo: an array ref has appeared {}", jAssignStmt.getArrayRef().getBase().getName());
+                        logger.debug("Todo: an array ref has appeared {}, {}", jAssignStmt.getArrayRef().getBase().getName(), jAssignStmt.getArrayRef().toString());
                         continue;
                     }
                     continue;
@@ -236,6 +236,17 @@ public class ObjectInstantiation {
      */
     @SuppressWarnings("unused")
     private static Object generateRandom(Class<?> type) {
+        if (type.isArray()) {
+            int length = rand.nextInt(0, 100); //bind at 100 to prevent loops from going too deep
+            var arr = Array.newInstance(type.getComponentType(), length);
+            if (length > 0) {
+                for (int i = 0; i < length; i++) {
+                    Array.set(arr, i, generateRandom(type.getComponentType()));
+                }
+            }
+            return arr;
+        }
+
         return switch (type.getName()) {
             case "int" -> rand.nextInt(Integer.MIN_VALUE, Integer.MAX_VALUE);
             case "double" -> {
@@ -249,7 +260,7 @@ public class ObjectInstantiation {
             case "long" -> rand.nextLong(Long.MIN_VALUE, Long.MAX_VALUE);
             case "short" -> (short) rand.nextInt(Short.MIN_VALUE, Short.MAX_VALUE);
             case "byte" -> (byte) rand.nextInt(Byte.MIN_VALUE, Byte.MAX_VALUE);
-            case "char" -> (char) rand.nextInt(Character.MIN_VALUE, Character.MAX_VALUE);
+            case "char" -> (char) rand.nextInt(32, 127); // most common ASCII characters https://www.ascii-code.com/characters/printable-characters
             case "boolean" -> rand.nextBoolean();
             // For other types, return default value
             default -> getDefault(type);

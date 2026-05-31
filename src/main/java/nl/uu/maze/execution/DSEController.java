@@ -285,8 +285,8 @@ public class DSEController {
                     strategy.reset();
                     logger.info("Processing method: {}", method.getName());
                     switch (fuzzingStrategy) {
-                        case NONE -> runConcreteDriven(method, strategy, muts, false, true, new ArgMap());
-                        case RANDOM -> runConcreteDriven(method, strategy, muts, false, true, new ArgMap()); //todo: fix random
+                        case NONE -> runConcreteDriven(method, strategy, muts, false, true, new ArgMap(), Optional.empty());
+                        case RANDOM -> runConcreteDriven(method, strategy, muts, false, true, new ArgMap(), Optional.empty()); //todo: fix random
                         case GENETIC -> runGenetic(method, strategy, muts);
                     }
                 } catch (Exception e) {
@@ -562,7 +562,7 @@ public class DSEController {
 
         // create initial 6 suites using random argument generation
         for (int i = 0; i < 5; i++) {
-            Suite suite = generateRandomSuite(coverageTracker, searchStrategy, method, javaMethod, muts, instantiator.getSelectedConstructor(), instantiator.getSelectedSetters().toArray(JavaSootMethod[]::new), totalTransitions);
+            Suite suite = generateRandomSuite(coverageTracker, searchStrategy, method, javaMethod, muts, instantiator.getSelectedConstructor(), instantiator.getSelectedSetters().toArray(JavaSootMethod[]::new), totalTransitions, instantiator);
             suites.add(suite);
         }
 
@@ -574,7 +574,7 @@ public class DSEController {
 
             // run genetic until the maximum parameter value is reached
             for (int i = 0; i < maxEvos; i++) {
-                geneticLoop(method, javaMethod, searchStrategy, muts, suites);
+                geneticLoop(method, javaMethod, searchStrategy, muts, suites, instantiator);
             }
 
             logger.debug("coverage after evo:");
@@ -583,13 +583,18 @@ public class DSEController {
                 logger.debug("times: {}", s.getTimesCovered());
             }
 
-            if (System.currentTimeMillis() >= executionDeadline) return;
+            if (System.currentTimeMillis() >= executionDeadline || suites.getFirst().getTransitionCoverage() >= 100) {
+                for (ArgMap argMap : suites.getFirst().getArgMaps()) {
+                    generator.addMethodTestCase(method, ctorSoot, argMap, instantiator);
+                }
+                return;
+            }
 
             // run PCG (by running concretedriven) on the first suite for all its argmaps
             Suite pcgSuite = new Suite();
             for (ArgMap best : suites.getFirst().getArgMaps()) {
                 coverageTracker.reset();
-                ArgMap argMap = runConcreteDriven(method, searchStrategy, muts, true, true, best);
+                ArgMap argMap = runConcreteDriven(method, searchStrategy, muts, true, true, best, Optional.of(instantiator));
                 logger.debug("new argmap {}", argMap);
                 pcgSuite.addArgMap(argMap);
             }
@@ -622,13 +627,13 @@ public class DSEController {
 
     }
 
-    private void geneticLoop(JavaSootMethod method, Method javaMethod, ConcreteSearchStrategy searchStrategy, JavaSootMethod[] muts, List<Suite> suites) throws Exception {
+    private void geneticLoop(JavaSootMethod method, Method javaMethod, ConcreteSearchStrategy searchStrategy, JavaSootMethod[] muts, List<Suite> suites, ObjectInstantiator instantiator) throws Exception {
         // perform genetic function on pairs of parents and sort the list
         for (int i = 0; i < 5; i += 2) {
             Pair<Suite, Suite> suitePair = geneticFunction(suites.get(i), suites.get(i + 1), javaMethod);
 
-            setCoverage(suitePair.first(), method, muts, searchStrategy);
-            setCoverage(suitePair.second(), method, muts, searchStrategy);
+            setCoverage(suitePair.first(), method, muts, searchStrategy, instantiator);
+            setCoverage(suitePair.second(), method, muts, searchStrategy, instantiator);
 
             suites.add(suitePair.first());
             suites.add(suitePair.second());
@@ -640,12 +645,12 @@ public class DSEController {
         suites.subList(suites.size() - prune, suites.size()).clear();
     }
 
-    private void setCoverage(Suite suite, JavaSootMethod method, JavaSootMethod[] muts, ConcreteSearchStrategy searchStrategy) throws Exception {
+    private void setCoverage(Suite suite, JavaSootMethod method, JavaSootMethod[] muts, ConcreteSearchStrategy searchStrategy, ObjectInstantiator instantiator) throws Exception {
         CoverageTracker coverageTracker = CoverageTracker.getInstance();
 
         coverageTracker.reset();
         for (ArgMap argMap : suite.getArgMaps()) {
-            runConcreteDriven(method, searchStrategy, muts, true, false, argMap);
+            runConcreteDriven(method, searchStrategy, muts, true, false, argMap, Optional.of(instantiator));
         }
         float lineCoverage = (float) method.getBody().getStmts().size() / coverageTracker.getCoveredNumber();
         suite.setLineCoverage(lineCoverage);
@@ -722,9 +727,10 @@ public class DSEController {
     private void mutate(Suite suite, int setMaximum, Method javaMethod) {
         int t = suite.getArgMaps().size();
 
-        for (ArgMap argMap : suite.getArgMaps()) {
+        suite.getArgMaps().replaceAll(argMap -> {
             if (random.nextInt(t) == 0) {
-                for (var pair : argMap.args.entrySet()) {
+                ArgMap newMap = new ArgMap();
+                for (var pair : newMap.args.entrySet()) {
                     Object o = switch (pair.getValue().getClass().getTypeName()) {
                         case "int" -> random.nextInt(2) == 0 ? random.nextInt(Integer.MAX_VALUE) : -1 * random.nextInt(Integer.MAX_VALUE);
                         case "double" -> random.nextInt(2) == 0 ? random.nextDouble(Double.MAX_VALUE) : -1.0 * random.nextDouble(Double.MAX_VALUE);
@@ -732,14 +738,18 @@ public class DSEController {
                         case "long" -> random.nextInt(2) == 0 ? random.nextLong(Long.MAX_VALUE) : -1 * random.nextLong(Long.MAX_VALUE);
                         case "short" -> random.nextInt(2) == 0 ? (short) random.nextInt(Short.MAX_VALUE) : (short) (-1 * random.nextInt(Short.MAX_VALUE));
                         case "byte" -> (byte) random.nextInt(2) == 0 ? (byte) random.nextInt(Byte.MAX_VALUE) : (byte) (-1 * ( random.nextInt(Byte.MAX_VALUE)));
-                        case "char" -> (char) random.nextInt(Character.MAX_VALUE);
+                        case "char" -> (char) random.nextInt(32, 127);
                         case "boolean" -> !((boolean)pair.getValue());
-                        case "java.lang.String" -> ((String)pair.getValue()) + (char)(random.nextInt(Character.MAX_VALUE));
+                        case "java.lang.String" -> ((String)pair.getValue()) + (char)(random.nextInt(32, 127));
                         default -> pair.getValue(); // leave the object the original
                     };
+                    newMap.set(pair.getKey(), o);
                 }
+
+                return newMap;
             }
-        }
+            return argMap;
+        });
 
         if (t < setMaximum) {
             double chance = 0.1;
@@ -755,7 +765,7 @@ public class DSEController {
         return coverable.getLineCoverage() * coverable.getLineCoverage();
     }
 
-    private Suite generateRandomSuite(CoverageTracker coverageTracker, ConcreteSearchStrategy searchStrategy, JavaSootMethod method, Method javaMethod, JavaSootMethod[] muts, Constructor<?> constructor, JavaSootMethod[] setters, int totalLines) throws Exception {
+    private Suite generateRandomSuite(CoverageTracker coverageTracker, ConcreteSearchStrategy searchStrategy, JavaSootMethod method, Method javaMethod, JavaSootMethod[] muts, Constructor<?> constructor, JavaSootMethod[] setters, int totalLines, ObjectInstantiator instantiator) throws Exception {
         coverageTracker.reset();
         Suite suite = new Suite();
 
@@ -769,7 +779,7 @@ public class DSEController {
                 ObjectInstantiation.generateRandomArgs(m.getParameters(), MethodType.METHOD, argMap, m.getName(), true);
             }
 
-            argMap = runConcreteDriven(method, searchStrategy, muts, true, false, argMap);
+            argMap = runConcreteDriven(method, searchStrategy, muts, true, false, argMap, Optional.of(instantiator));
             suite.addArgMap(argMap);
         }
         float lineCoverage = (float) method.getBody().getStmts().size() / coverageTracker.getCoveredNumber(); // todo: modify this to include cons and setters
@@ -782,13 +792,13 @@ public class DSEController {
     }
 
     /** Run concrete-driven DSE on the given method. */
-    private ArgMap runConcreteDriven(JavaSootMethod method, ConcreteSearchStrategy searchStrategy, JavaSootMethod[] muts, boolean performSingle, boolean performPcg, ArgMap argMap) throws Exception {
+    private ArgMap runConcreteDriven(JavaSootMethod method, ConcreteSearchStrategy searchStrategy, JavaSootMethod[] muts, boolean performSingle, boolean performPcg, ArgMap argMap, Optional<ObjectInstantiator> objectInstantiator) throws Exception {
         Method javaMethod = analyzer.getJavaMethod(method.getSignature(), instrumented);
         logger.debug("analyzing java method {} with arguments {}", javaMethod.getName(), javaMethod.getParameters());
         boolean deadlineReached = false;
 
         // Setup instance for this method
-        ObjectInstantiator instantiator = getObjectInstantiator(method, muts);
+        ObjectInstantiator instantiator = objectInstantiator.isPresent() ? objectInstantiator.get() : getObjectInstantiator(method, muts);
         this.ctor = instantiator.getSelectedConstructor();
 
         if (this.ctor == null) {
@@ -821,7 +831,9 @@ public class DSEController {
                 // Only add a new test case if this path has not been explored before
                 // Note: this particular check will catch only certain edge cases that are not
                 // caught by the search strategy
+                logger.debug("checking if a state is new with argmap {}", argMap);
                 if (isNew) {
+                    logger.debug("the state was new");
                     // For the first concrete execution, argMap is populated by the concrete
                     // executor
                     generator.addMethodTestCase(method, ctorSoot, argMap, instantiator);
