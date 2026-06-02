@@ -5,6 +5,7 @@ import java.util.concurrent.Callable;
 
 import nl.uu.maze.execution.concrete.objectinstantiation.ObjectInstantiator.SettersSelectionStrategy;
 import nl.uu.maze.execution.concrete.objectinstantiation.ObjectInstantiator.ConstructorSelectionStrategy;
+import nl.uu.maze.fuzzing.FuzzingOptions;
 import org.slf4j.LoggerFactory;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.Level;
@@ -95,6 +96,24 @@ public class MazeCLI implements Callable<Integer> {
             "--setters-selection" }, description = "Setters selection strategy for concrete-driven DSE (default: ${DEFAULT-VALUE}, options: All, None, Usage)", defaultValue = "None", paramLabel = "<name>")
     private SettersSelectionStrategy settersSelectionStrategy;
 
+    @Option(names = { "-Gn", "--genetic-generations"}, description = "The number of genetic generations performed before path condition generation. Only used if fuzzer is GENETIC.", defaultValue = "3", paramLabel = "<int>")
+    private int geneticGenerations;
+
+    @Option(names = { "Gs", "--genetic-suites"}, description = "The amount of suites randomly generated at the start of the genetic algorithm. Only used if fuzzer is GENETIC.", defaultValue = "5", paramLabel = "<int>")
+    private int geneticSuites;
+
+    @Option(names = { "Gg", "--genetic-genotypes"}, description = "The amount of genotypes randomly generated at the start of the genetic algorithm (per suite). Only used if fuzzer is GENETIC.", defaultValue = "5", paramLabel = "<int>")
+    private int geneticGenotypes;
+
+    @Option(names = { "Gms", "--genetic-maximumsuites"}, description = "The maximum amount of suites before the weakest ones are cut off. Only used if fuzzer is GENETIC.", defaultValue = "10", paramLabel = "<int>")
+    private int geneticMaximumSuites;
+
+    @Option(names = { "Gmg", "--genetic-maximumgenotypes"}, description = "The maximum amount of genotypes per suite before the weakest ones are cut off. Only used if fuzzer is GENETIC.", defaultValue = "10", paramLabel = "<int>")
+    private int geneticMaximumGenotypes;
+
+    @Option(names = { "Ri", "-- random-initialstates"}, description = "The amount of initial states to be used for random fuzzing. Only used if fuzzer is RANDOM.", defaultValue = "10", paramLabel = "<int>")
+    private int ranomInitialStates;
+
     @Override
     public Integer call() {
         try {
@@ -111,9 +130,11 @@ public class MazeCLI implements Callable<Integer> {
             SearchStrategy<?> strategy = SearchStrategyFactory.createStrategy(searchStrategies,
                     searchHeuristics, heuristicWeights, timeBudget);
 
+            FuzzingOptions fuzzingOptions = new FuzzingOptions(geneticGenerations, geneticSuites, geneticGenotypes, geneticMaximumSuites, ranomInitialStates, geneticMaximumGenotypes);
+
             Long start = System.currentTimeMillis();
             DSEController controller = new DSEController(classPath, concreteDriven, strategy, constructorSelectionStrategy, settersSelectionStrategy, fuzzingStrategy, outPath,
-                    methodName, maxDepth, testTimeout, packageName, junitVersion.isJUnit4());
+                    methodName, maxDepth, testTimeout, packageName, junitVersion.isJUnit4(), fuzzingOptions);
             controller.run(className, timeBudget);
             Long end = System.currentTimeMillis();
             logger.info("Execution time: {} ms", end - start);

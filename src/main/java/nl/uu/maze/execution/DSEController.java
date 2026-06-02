@@ -20,6 +20,7 @@ import nl.uu.maze.execution.concrete.objectinstantiation.setters.NoSettersSelect
 import nl.uu.maze.execution.concrete.objectinstantiation.setters.SettersSelector;
 import nl.uu.maze.execution.concrete.objectinstantiation.setters.UsageSettersSelector;
 import nl.uu.maze.fuzzing.Coverable;
+import nl.uu.maze.fuzzing.FuzzingOptions;
 import nl.uu.maze.fuzzing.Genotype;
 import nl.uu.maze.fuzzing.Suite;
 import org.slf4j.Logger;
@@ -60,6 +61,7 @@ public class DSEController {
     private ConstructorSelectionStrategy constructorSelectionStrategy;
     private SettersSelectionStrategy settersSelectionStrategy;
     private ObjectInstantiator instantiator;
+    private final FuzzingOptions fuzzingOptions;
     /** Search strategy used for symbolic replay of a trace (DFS). */
     private final SymbolicSearchStrategy replayStrategy;
     private final JavaAnalyzer analyzer;
@@ -106,7 +108,7 @@ public class DSEController {
      * @param packageName    The package name for the generated test files
      */
     public DSEController(String classPath, boolean concreteDriven, SearchStrategy<?> searchStrategy, ConstructorSelectionStrategy constructorSelectionStrategy, SettersSelectionStrategy settersSelectionStrategy, FuzzingStrategy fuzzingStrategy,
-            String outPath, String methodName, int maxDepth, long testTimeout, String packageName, boolean targetJUnit4)
+            String outPath, String methodName, int maxDepth, long testTimeout, String packageName, boolean targetJUnit4, FuzzingOptions fuzzingOptions)
             throws Exception {
         instrumenter = new BytecodeInstrumenter(classPath);
         ClassLoader classLoader;
@@ -129,6 +131,7 @@ public class DSEController {
         this.constructorSelectionStrategy = constructorSelectionStrategy;
         this.settersSelectionStrategy = settersSelectionStrategy;
         this.replayStrategy = new SymbolicSearchStrategy(new DFS<>());
+        this.fuzzingOptions = fuzzingOptions;
 
         this.analyzer = JavaAnalyzer.initialize(classPath, classLoader);
 
@@ -542,7 +545,7 @@ public class DSEController {
         CoverageTracker coverageTracker = CoverageTracker.getInstance();
         List<Suite> suites = new ArrayList<>();
 
-        int maxEvos = 3; // todo: change this into a parameter
+        int maxEvos = fuzzingOptions.getGeneticGenerations(); // todo: change this into a parameter
 
         ObjectInstantiator instantiator = getObjectInstantiator(method, muts);
 
@@ -561,7 +564,7 @@ public class DSEController {
         int totalTransitions = CoverageTracker.countRealTransitions(startingState, method, analyzer.getCFG(method));
 
         // create initial 6 suites using random argument generation
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < fuzzingOptions.getGeneticSuites(); i++) {
             Suite suite = generateRandomSuite(coverageTracker, searchStrategy, method, javaMethod, muts, instantiator.getSelectedConstructor(), instantiator.getSelectedSetters().toArray(JavaSootMethod[]::new), totalTransitions, instantiator);
             suites.add(suite);
         }
@@ -641,8 +644,9 @@ public class DSEController {
         Collections.sort(suites);
 
         // prune the list until the 6 best suites remain
-        int prune = suites.size() - 6;
-        suites.subList(suites.size() - prune, suites.size()).clear();
+        int prune = suites.size() - fuzzingOptions.getGeneticMaximumSuites();
+        if (prune > 0)
+            suites.subList(suites.size() - prune, suites.size()).clear();
     }
 
     private void setCoverage(Suite suite, JavaSootMethod method, JavaSootMethod[] muts, ConcreteSearchStrategy searchStrategy, ObjectInstantiator instantiator) throws Exception {
@@ -690,8 +694,8 @@ public class DSEController {
             }
         }
 
-        mutate(child0, 10, javaMethod);
-        mutate(child1, 10, javaMethod);
+        mutate(child0, fuzzingOptions.getGeneticMaximumGenotypes(), javaMethod);
+        mutate(child1, fuzzingOptions.getGeneticMaximumGenotypes(), javaMethod);
 
         return new Pair<>(child0, child1);
     }
