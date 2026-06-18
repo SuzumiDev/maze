@@ -15,6 +15,8 @@ import nl.uu.maze.util.Z3ContextProvider;
 import nl.uu.maze.util.Z3Sorts;
 import nl.uu.maze.execution.symbolic.PathConstraint.SingleConstraint;
 import nl.uu.maze.search.SearchTarget;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import sootup.core.graph.StmtGraph;
 import sootup.core.jimple.basic.Immediate;
 import sootup.core.jimple.common.expr.AbstractInstanceInvokeExpr;
@@ -109,6 +111,8 @@ public class SymbolicState implements SearchTarget {
     private boolean exceptionThrown = false;
     /** Indicates whether the state's constraints were found to be unsatisfiable. */
     private boolean isInfeasible = false;
+
+    private static Logger logger = LoggerFactory.getLogger(SymbolicState.class);
 
     public SymbolicState(JavaSootMethod method, StmtGraph<?> cfg) {
         this.method = method;

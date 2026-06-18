@@ -6,29 +6,20 @@ package nl.uu.maze.benchmarks.setter;
  * This serves as an interesting benchmark because it operates on an array
  * inside of a while loop, with multiple conditios in the loop body.
  */
-public class BinarySearch {
+public class BinarySearchsc {
     private int target = 0;
-    private int[] test = new int[5];
-    //private int[] arr;
+    private int[] arr;
 
-    //public BinarySearch(int target) {
-    //    this.target = target;
-    //}
+    public BinarySearchsc(int[] arr) {
+        this.arr = arr;
+    }
 
     public void setTarget(int target) {
         this.target = target;
-        int test1 = target;
-        if (test1 > 0) {
-            this.target += 1;
-        }
-    }
-
-    public void setTest(int test) {
-        this.test[0] = test;
     }
 
     /** Returns the index of the target in the sorted array. */
-    public int binarySearch(int[] arr) {
+    public int binarySearch() {
         int low = 0, high = arr.length - 1;
 
         while (low <= high) {

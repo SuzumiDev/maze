@@ -8,7 +8,7 @@ package nl.uu.maze.benchmarks.setter;
  * balance the number of paths from nested iterations with the cost
  * of solving constraints involving array accesses.
  */
-public class MatrixAnalyzer {
+public class MatrixAnalyzers {
     private int[][] matrix;
 
     public void setMatrix(int[][] matrix) {

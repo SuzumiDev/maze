@@ -238,7 +238,7 @@ public class ObjectInstantiation {
     @SuppressWarnings("unused")
     private static Object generateRandom(Class<?> type) {
         if (type.isArray()) {
-            int length = rand.nextInt(0, 100); //bind at 100 to prevent loops from going too deep
+            int length = rand.nextInt(0, 50); //bind at 100 to prevent loops from going too deep
             var arr = Array.newInstance(type.getComponentType(), length);
             if (length > 0) {
                 for (int i = 0; i < length; i++) {

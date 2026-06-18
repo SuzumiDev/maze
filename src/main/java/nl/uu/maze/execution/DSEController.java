@@ -23,6 +23,7 @@ import nl.uu.maze.fuzzing.Coverable;
 import nl.uu.maze.fuzzing.FuzzingOptions;
 import nl.uu.maze.fuzzing.Genotype;
 import nl.uu.maze.fuzzing.Suite;
+import org.apache.commons.lang3.NotImplementedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -561,11 +562,9 @@ public class DSEController {
 
         SymbolicState startingState = new SymbolicState(ctorSoot, ctorCfg);
 
-        int totalTransitions = CoverageTracker.countRealTransitions(startingState, method, analyzer.getCFG(method));
-
         // create initial 6 suites using random argument generation
         for (int i = 0; i < fuzzingOptions.getGeneticSuites(); i++) {
-            Suite suite = generateRandomSuite(coverageTracker, searchStrategy, method, javaMethod, muts, instantiator.getSelectedConstructor(), instantiator.getSelectedSetters().toArray(JavaSootMethod[]::new), totalTransitions, instantiator);
+            Suite suite = generateRandomSuite(coverageTracker, searchStrategy, method, javaMethod, muts, instantiator.getSelectedConstructor(), instantiator.getSelectedSetters().toArray(JavaSootMethod[]::new), instantiator);
             suites.add(suite);
         }
 
@@ -580,13 +579,7 @@ public class DSEController {
                 geneticLoop(method, javaMethod, searchStrategy, muts, suites, instantiator);
             }
 
-            logger.debug("coverage after evo:");
-            for (Suite s : suites) {
-                logger.debug("line: {}", s.getLineCoverage());
-                logger.debug("times: {}", s.getTimesCovered());
-            }
-
-            if (System.currentTimeMillis() >= executionDeadline || suites.getFirst().getTransitionCoverage() >= 100) {
+            if (System.currentTimeMillis() >= executionDeadline) {
                 for (ArgMap argMap : suites.getFirst().getArgMaps()) {
                     generator.addMethodTestCase(method, ctorSoot, argMap, instantiator);
                 }
@@ -594,19 +587,21 @@ public class DSEController {
             }
 
             // run PCG (by running concretedriven) on the first suite for all its argmaps
+            coverageTracker.reset();
             Suite pcgSuite = new Suite();
             for (ArgMap best : suites.getFirst().getArgMaps()) {
-                coverageTracker.reset();
+                if (System.currentTimeMillis() > executionDeadline) break;
+                //coverageTracker.reset();
                 ArgMap argMap = runConcreteDriven(method, searchStrategy, muts, true, true, best, Optional.of(instantiator));
                 logger.debug("new argmap {}", argMap);
                 pcgSuite.addArgMap(argMap);
             }
 
             float lineCoverage = (float) method.getBody().getStmts().size() / coverageTracker.getCoveredNumber();
-            pcgSuite.setLineCoverage(lineCoverage);
+            pcgSuite.setLineCoverage(coverageTracker.getCoveredNumber());
             pcgSuite.setTimesCovered(coverageTracker.getTimesCovered());
 
-            float transitionCoverage = (float) CoverageTracker.countTransitions(method.getBody()) / coverageTracker.getCoveredTransitionsNumber(); // todo: this might be stupid
+            float transitionCoverage = (float) coverageTracker.getCoveredTransitionsNumber(); // todo: this might be stupid
             pcgSuite.setTransitionCoverage(transitionCoverage);
 
             suites.add(pcgSuite);
@@ -633,6 +628,7 @@ public class DSEController {
     private void geneticLoop(JavaSootMethod method, Method javaMethod, ConcreteSearchStrategy searchStrategy, JavaSootMethod[] muts, List<Suite> suites, ObjectInstantiator instantiator) throws Exception {
         // perform genetic function on pairs of parents and sort the list
         for (int i = 0; i < 5; i += 2) {
+            if (System.currentTimeMillis() > executionDeadline) break;
             Pair<Suite, Suite> suitePair = geneticFunction(suites.get(i), suites.get(i + 1), javaMethod);
 
             setCoverage(suitePair.first(), method, muts, searchStrategy, instantiator);
@@ -657,10 +653,10 @@ public class DSEController {
             runConcreteDriven(method, searchStrategy, muts, true, false, argMap, Optional.of(instantiator));
         }
         float lineCoverage = (float) method.getBody().getStmts().size() / coverageTracker.getCoveredNumber();
-        suite.setLineCoverage(lineCoverage);
+        suite.setLineCoverage(coverageTracker.getCoveredNumber());
         suite.setTimesCovered(coverageTracker.getTimesCovered());
 
-        float transitionCoverage = (float) CoverageTracker.countTransitions(method.getBody()) / coverageTracker.getCoveredTransitionsNumber(); // todo: this might be stupid
+        float transitionCoverage = (float) coverageTracker.getCoveredTransitionsNumber(); // todo: this might be stupid
         suite.setTransitionCoverage(transitionCoverage);
 
         // todo:
@@ -683,15 +679,26 @@ public class DSEController {
             totalFitness = 2;
         }
 
-        for (int i = 0; i < parent0.getArgMaps().size(); i++) {
-            int r = random.nextInt(totalFitness);
-            if (r < parent0Fitness) {
-                child0.addArgMap(parent0.getArgMaps().get(i));
-                child1.addArgMap(parent1.getArgMaps().get(i));
-            } else {
-                child0.addArgMap(parent1.getArgMaps().get(i));
-                child1.addArgMap(parent0.getArgMaps().get(i));
+        switch (fuzzingOptions.getGeneticLevel()) {
+            case SUITE -> {
+                for (int i = 0; i < parent0.getArgMaps().size(); i++) {
+                    int r = random.nextInt(totalFitness);
+                    if (r < parent0Fitness) {
+                        child0.addArgMap(parent0.getArgMaps().get(i));
+                        child1.addArgMap(parent1.getArgMaps().get(i));
+                    } else {
+                        child0.addArgMap(parent1.getArgMaps().get(i));
+                        child1.addArgMap(parent0.getArgMaps().get(i));
+                    }
+                }
+            } case GENOTYPE -> {
+                for (int i = 0; i < parent0.getArgMaps().size(); i++) {
+                    Pair<ArgMap, ArgMap> children = genotypeGeneticFunction(parent0.getArgMaps().get(i), parent1.getArgMaps().get(i), parent0Fitness, parent1Fitness);
+                    child0.addArgMap(children.first());
+                    child1.addArgMap(children.second());
+                }
             }
+            default -> throw new NotImplementedException("Genetic level not implemented.");
         }
 
         mutate(child0, fuzzingOptions.getGeneticMaximumGenotypes(), javaMethod);
@@ -700,28 +707,26 @@ public class DSEController {
         return new Pair<>(child0, child1);
     }
 
-    private Pair<Genotype, Genotype> genotypeGeneticFunction(Genotype parent0, Genotype parent1) {
-        Genotype child0 = new Genotype();
-        Genotype child1 = new Genotype();
+    private Pair<ArgMap, ArgMap> genotypeGeneticFunction(ArgMap parent0, ArgMap parent1, int parent0Fitness, int parent1Fitness) {
+        ArgMap child0 = new ArgMap();
+        ArgMap child1 = new ArgMap();
 
-        int parent0Fitness = (int) calculateFitness(parent0);
-        int parent1Fitness = (int) calculateFitness(parent1);
         int totalFitness = parent0Fitness + parent1Fitness;
         if (totalFitness <= 1) { // todo: this is stupid, try something else
             parent0Fitness = 1;
             totalFitness = 2;
         }
 
-        var parent0Args = parent0.getArgMap().args.entrySet();
+        var parent0Args = parent0.args.entrySet();
 
         for (var pair : parent0Args) {
             int r = random.nextInt(totalFitness);
             if (r < parent0Fitness) {
-                child0.getArgMap().set(pair.getKey(), pair.getValue());
-                child1.getArgMap().set(pair.getKey(), parent1.getArgMap().get(pair.getKey()));
+                child0.set(pair.getKey(), pair.getValue());
+                child1.set(pair.getKey(), parent1.get(pair.getKey()));
             } else {
-                child0.getArgMap().set(pair.getKey(), parent0.getArgMap().get(pair.getKey()));
-                child1.getArgMap().set(pair.getKey(), pair.getValue());
+                child0.set(pair.getKey(), parent0.get(pair.getKey()));
+                child1.set(pair.getKey(), pair.getValue());
             }
         }
 
@@ -766,10 +771,10 @@ public class DSEController {
     }
 
     private float calculateFitness(Coverable coverable) {
-        return coverable.getLineCoverage() * coverable.getLineCoverage();
+        return coverable.getTransitionCoverage();
     }
 
-    private Suite generateRandomSuite(CoverageTracker coverageTracker, ConcreteSearchStrategy searchStrategy, JavaSootMethod method, Method javaMethod, JavaSootMethod[] muts, Constructor<?> constructor, JavaSootMethod[] setters, int totalLines, ObjectInstantiator instantiator) throws Exception {
+    private Suite generateRandomSuite(CoverageTracker coverageTracker, ConcreteSearchStrategy searchStrategy, JavaSootMethod method, Method javaMethod, JavaSootMethod[] muts, Constructor<?> constructor, JavaSootMethod[] setters, ObjectInstantiator instantiator) throws Exception {
         coverageTracker.reset();
         Suite suite = new Suite();
 
@@ -782,15 +787,16 @@ public class DSEController {
                 Method m = analyzer.getJavaMethod(setter.getSignature(), instrumented);
                 ObjectInstantiation.generateRandomArgs(m.getParameters(), MethodType.METHOD, argMap, m.getName(), true);
             }
-
+            logger.info("coverage before concrete run {} {}", coverageTracker.getCoveredNumber(), coverageTracker.getTimesCovered());
             argMap = runConcreteDriven(method, searchStrategy, muts, true, false, argMap, Optional.of(instantiator));
+            logger.info("coverage after concrete run: {} {}", coverageTracker.getCoveredNumber(), coverageTracker.getTimesCovered());
             suite.addArgMap(argMap);
         }
         float lineCoverage = (float) method.getBody().getStmts().size() / coverageTracker.getCoveredNumber(); // todo: modify this to include cons and setters
-        suite.setLineCoverage(lineCoverage);
+        suite.setLineCoverage(coverageTracker.getCoveredNumber());
         suite.setTimesCovered(coverageTracker.getTimesCovered());
 
-        float transitionCoverage = (float) totalLines / coverageTracker.getCoveredTransitionsNumber(); // todo: this might be stupid
+        float transitionCoverage = (float)  coverageTracker.getCoveredTransitionsNumber(); // todo: this might be stupid
         suite.setTransitionCoverage(transitionCoverage);
         return suite;
     }

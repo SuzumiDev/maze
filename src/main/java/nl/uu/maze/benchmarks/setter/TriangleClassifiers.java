@@ -20,7 +20,7 @@ package nl.uu.maze.benchmarks.setter;
  * likely go into one of the methods operating on floating-point numbers, and
  * never even reach the easy integer variant before running out of time.
  */
-public class TriangleClassifier {
+public class TriangleClassifiers {
     public enum TriangleType {
         EQUILATERAL,
         ISOSCELES,

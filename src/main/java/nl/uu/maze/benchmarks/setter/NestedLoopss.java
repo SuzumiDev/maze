@@ -13,7 +13,7 @@ package nl.uu.maze.benchmarks.setter;
  * Classic example of where DFS would be a bad choice (as with really any loop),
  * as it would infintely go deeper and deeper into the loop.
  */
-public class NestedLoops {
+public class NestedLoopss {
     private int[] arr;
 
     public void setArr(int[] arr) {

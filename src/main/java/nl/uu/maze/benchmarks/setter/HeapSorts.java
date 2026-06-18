@@ -3,7 +3,7 @@ package nl.uu.maze.benchmarks.setter;
 /**
  * Benchmark class that implements the Heap Sort algorithm on an array of floats.
  */
-public class HeapSort {
+public class HeapSorts {
     private float[] arr;
 
     public void setArr(float[] arr) {

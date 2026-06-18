@@ -12,7 +12,7 @@ import ch.qos.logback.classic.Level;
 
 import nl.uu.maze.execution.DSEController;
 import nl.uu.maze.main.cli.converters.*;
-import nl.uu.maze.fuzzing.FuzzingFactory.FuzzingStrategy;
+import nl.uu.maze.fuzzing.FuzzingFactory.*;
 import nl.uu.maze.search.heuristic.SearchHeuristicFactory.ValidSearchHeuristic;
 import nl.uu.maze.search.strategy.SearchStrategy;
 import nl.uu.maze.search.strategy.SearchStrategyFactory;
@@ -111,8 +111,14 @@ public class MazeCLI implements Callable<Integer> {
     @Option(names = { "Gmg", "--genetic-maximumgenotypes"}, description = "The maximum amount of genotypes per suite before the weakest ones are cut off. Only used if fuzzer is GENETIC.", defaultValue = "10", paramLabel = "<int>")
     private int geneticMaximumGenotypes;
 
-    @Option(names = { "Ri", "-- random-initialstates"}, description = "The amount of initial states to be used for random fuzzing. Only used if fuzzer is RANDOM.", defaultValue = "10", paramLabel = "<int>")
+    @Option(names = { "Ri", "--random-initialstates"}, description = "The amount of initial states to be used for random fuzzing. Only used if fuzzer is RANDOM.", defaultValue = "10", paramLabel = "<int>")
     private int ranomInitialStates;
+
+    @Option(names = { "Gl", "--genetic-level"}, description = "The level at which the genetic algorithm makes new suites (suite level or genotype level, or both). Only used if fuzzer is GENETIC.", defaultValue = "SUITE", paramLabel = "<name>")
+    private GeneticLevel geneticLevel;
+
+    @Option(names = { "Lc", "--limit-coverage"}, description = "The coverage percentage at which the concrete-driven DSE will stop generation, currently only works for GENETIC fuzzing.", defaultValue = "100", paramLabel = "<int>")
+    private int limitCoverage;
 
     @Override
     public Integer call() {
@@ -130,7 +136,7 @@ public class MazeCLI implements Callable<Integer> {
             SearchStrategy<?> strategy = SearchStrategyFactory.createStrategy(searchStrategies,
                     searchHeuristics, heuristicWeights, timeBudget);
 
-            FuzzingOptions fuzzingOptions = new FuzzingOptions(geneticGenerations, geneticSuites, geneticGenotypes, geneticMaximumSuites, ranomInitialStates, geneticMaximumGenotypes);
+            FuzzingOptions fuzzingOptions = new FuzzingOptions(geneticGenerations, geneticSuites, geneticGenotypes, geneticMaximumSuites, ranomInitialStates, geneticMaximumGenotypes, geneticLevel, limitCoverage);
 
             Long start = System.currentTimeMillis();
             DSEController controller = new DSEController(classPath, concreteDriven, strategy, constructorSelectionStrategy, settersSelectionStrategy, fuzzingStrategy, outPath,
