@@ -290,7 +290,7 @@ public class DSEController {
                     logger.info("Processing method: {}", method.getName());
                     switch (fuzzingStrategy) {
                         case NONE -> runConcreteDriven(method, strategy, muts, false, true, new ArgMap(), Optional.empty());
-                        case RANDOM -> runConcreteDriven(method, strategy, muts, false, true, new ArgMap(), Optional.empty()); //todo: fix random
+                        case RANDOM -> runRandomFuzzer(method, strategy, muts);
                         case GENETIC -> runGenetic(method, strategy, muts);
                     }
                 } catch (Exception e) {
@@ -799,6 +799,30 @@ public class DSEController {
         float transitionCoverage = (float)  coverageTracker.getCoveredTransitionsNumber(); // todo: this might be stupid
         suite.setTransitionCoverage(transitionCoverage);
         return suite;
+    }
+
+    private void runRandomFuzzer(JavaSootMethod method, ConcreteSearchStrategy searchStrategy, JavaSootMethod[] muts) throws Exception {
+        ArgMap argMap = new ArgMap();
+        Method javaMethod = analyzer.getJavaMethod(method.getSignature(), instrumented);
+
+        ObjectInstantiator objectInstantiator = getObjectInstantiator(method, muts);
+
+        Constructor<?> constructor = objectInstantiator.getSelectedConstructor();
+        JavaSootMethod[] setters = objectInstantiator.getSelectedSetters().toArray(JavaSootMethod[]::new);
+
+        for (int i = 0; i < fuzzingOptions.getRandomInitialStates(); i++) {
+            argMap = new ArgMap();
+            ObjectInstantiation.generateRandomArgs(javaMethod.getParameters(), MethodType.METHOD, argMap, javaMethod.getName(), true);
+            ObjectInstantiation.generateRandomArgs(constructor.getParameters(), MethodType.CTOR, argMap, constructor.getName(), true);
+            for (JavaSootMethod setter : setters) {
+                Method m = analyzer.getJavaMethod(setter.getSignature(), instrumented);
+                ObjectInstantiation.generateRandomArgs(m.getParameters(), MethodType.METHOD, argMap, m.getName(), true);
+            }
+
+            argMap = runConcreteDriven(method, searchStrategy, muts, true, false, argMap, Optional.of(objectInstantiator));
+        }
+
+        runConcreteDriven(method, searchStrategy, muts, false, true, argMap, Optional.of(objectInstantiator));
     }
 
     /** Run concrete-driven DSE on the given method. */
